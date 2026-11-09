@@ -19,7 +19,7 @@ def v1_transport():
         if req.url.path == "/v3.0/endpointSecurity/endpoints":
             if "skip" in req.url.params:
                 return httpx.Response(200, json={"items": ENDPOINTS[3:]})
-            return httpx.Response(200, json={"items": ENDPOINTS[:3],
+            return httpx.Response(200, json={"items": ENDPOINTS[:3],  # page 1
                                              "nextLink": str(req.url.copy_with(params={"skip": "x"}))})
         assert "workbench" not in req.url.path and "search" not in req.url.path  # no telemetry/detections
         return httpx.Response(404)
@@ -63,14 +63,14 @@ def test_unknown_region_rejected():
 def test_collect_paginates_and_summarizes():
     cid = make_client()
     s = collect(cid)
-    assert s["total"] == 5
-    assert (s["sep"], s["swp"], s["sensor_only"]) == (2, 2, 1)
-    assert s["offline"] == 1 and s["stale"] == 1 and s["outdated"] == 1 and s["up_to_date"] == 4
+    assert s["total"] == 7 and s["unmanaged"] == 2  # matches console "All managed endpoints"
+    assert (s["sep"], s["swp"], s["sensor_only"]) == (3, 3, 1)  # APEX ONE -> SEP, "Server and Workload" -> SWP
+    assert s["offline"] == 1 and s["stale"] == 1 and s["outdated"] == 1 and s["up_to_date"] == 6
     assert s["latest_versions"] == {"SEP": "14.0.13100.1", "SWP": "20.0.1.7000"}
     assert s["behind_latest"] == 1  # BL-LAP-002 on 14.0.12900.1
-    assert s["by_agent_version"]["SEP"] == {"14.0.13100.1": 1, "14.0.12900.1": 1}
+    assert s["by_agent_version"]["SEP"] == {"14.0.13100.1": 2, "14.0.12900.1": 1}
     with SessionLocal() as db:
-        assert db.query(Endpoint).count() == 5
+        assert db.query(Endpoint).count() == 7
         assert db.get(Client, cid).last_poll_ok is True
 
 
@@ -79,7 +79,7 @@ def test_repoll_replaces_endpoints_and_keeps_history():
     collect(cid)
     collect(cid)
     with SessionLocal() as db:
-        assert db.query(Endpoint).count() == 5
+        assert db.query(Endpoint).count() == 7
         assert db.query(Snapshot).count() == 2
 
 
@@ -98,7 +98,7 @@ def test_report_pdf():
     collect(cid)
     with SessionLocal() as s:
         pdf, summary = build_report(s, s.get(Client, cid))
-    assert pdf.startswith(b"%PDF") and summary["total"] == 5
+    assert pdf.startswith(b"%PDF") and summary["total"] == 7
 
 
 def test_outlook_draft_payload(monkeypatch):
@@ -129,7 +129,7 @@ def test_web_requires_login_and_renders():
         assert http.post("/login", data={"username": "admin", "password": "nope"}).status_code == 401
         assert http.post("/login", data={"username": "admin", "password": "pw"}).status_code == 200
         data = http.get("/api/overview").json()
-        assert data["clients"][0]["summary"]["total"] == 5
+        assert data["clients"][0]["summary"]["total"] == 7
         page = http.get(f"/clients/{cid}")
         assert page.status_code == 200 and "BL-SRV-DB01" in page.text and "Agent versions" in page.text
         assert http.get(f"/clients/{cid}/report.pdf").content.startswith(b"%PDF")

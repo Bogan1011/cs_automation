@@ -28,4 +28,9 @@ ENDPOINTS = [
     endpoint("g3", "BL-SRV-DB01", "Server & Workload Protection", os_name="Linux"),
     endpoint("g4", "BL-SRV-WEB01", "Server & Workload Protection"),
     endpoint("g5", "BL-KIOSK", ""),
+    endpoint("g6", "BL-LAP-APEX", "APEX ONE"),
+    endpoint("g7", "BL-SRV-AND", "Server and Workload Protection"),
+    # unmanaged (discovered, no agent/sensor) — must not be counted
+    {"agentGuid": "u1", "endpointName": "UNMANAGED-PC", "eppAgent": {}, "edrSensor": {}},
+    {"agentGuid": "u2", "endpointName": "UNMANAGED-PC2"},
 ]

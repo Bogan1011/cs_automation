@@ -2,7 +2,9 @@
 import argparse
 import getpass
 import json
+import re
 import sys
+from collections import Counter, defaultdict
 
 from sqlalchemy import select
 
@@ -17,6 +19,51 @@ def _read_key(_args=None) -> str:
     if not key:
         sys.exit("No key entered")
     return key
+
+
+SENSITIVE = re.compile(r"name|ip|guid|mac|user|domain|host|fqdn|address|serial|id$|uuid|sid", re.I)
+SAFE = re.compile(r"version|pattern|engine|component|status|manager|type|platform|policy|group|state|connect|deploy|install", re.I)
+
+
+def _flatten(obj, prefix=""):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            yield from _flatten(v, f"{prefix}.{k}" if prefix else k)
+    elif isinstance(obj, list):
+        if obj and all(isinstance(x, (dict, list)) for x in obj):
+            for x in obj:
+                yield from _flatten(x, prefix + "[]")
+        else:
+            yield prefix, ", ".join(map(str, obj))
+    else:
+        yield prefix, obj
+
+
+def inspect_fields(items: list[dict]) -> str:
+    """Field paths, how often they are filled, and value counts for low-cardinality, non-identifying fields."""
+    seen: dict[str, Counter] = defaultdict(Counter)
+    for item in items:
+        for path, val in _flatten(item):
+            if val not in (None, "", []):
+                seen[path][str(val)[:80]] += 1
+    out = [f"{len(items)} endpoint records returned by the API", ""]
+    for path in sorted(seen):
+        counts = seen[path]
+        filled = sum(counts.values())
+        leaf = path.split(".")[-1].replace("[]", "")
+        line = f"{path}  (filled {filled})"
+        hidden = bool(SENSITIVE.search(leaf)) and not SAFE.search(leaf) and not leaf.lower().startswith("os")
+        if "datetime" in leaf.lower():
+            line += f"  [{len(counts)} distinct timestamps]"
+        elif hidden:
+            line += f"  [{len(counts)} distinct, values hidden]"
+        elif len(counts) <= 25 or SAFE.search(leaf):
+            top = ", ".join(f"{v!r}: {n}" for v, n in counts.most_common(25))
+            line += f"\n      {top}" + (f"  … +{len(counts) - 25} more" if len(counts) > 25 else "")
+        else:
+            line += f"  [{len(counts)} distinct]"
+        out.append(line)
+    return "\n".join(out)
 
 
 def main(argv=None):
@@ -39,6 +86,8 @@ def main(argv=None):
     t.add_argument("--name", required=True)
     d = sub.add_parser("dump", help="print the first raw endpoint record (to check field mapping)")
     d.add_argument("--name", required=True)
+    i = sub.add_parser("inspect", help="summarise the API fields across all endpoints (hides names/IPs)")
+    i.add_argument("--name", required=True)
     sub.add_parser("poll", help="run one collection for all clients now")
     args = p.parse_args(argv)
 
@@ -78,6 +127,11 @@ def main(argv=None):
             for c in s.scalars(select(Client).order_by(Client.name)):
                 state = "ok" if c.last_poll_ok else ("error: " + (c.last_error or "")[:80] if c.last_poll_ok is False else "never polled")
                 print(f"{c.name:30} {c.region:4} {'enabled' if c.enabled else 'disabled':9} {state}")
+        elif args.cmd == "inspect":
+            c = get(args.name)
+            with VisionOneClient(crypto.decrypt(c.api_key_enc), c.region) as v1:
+                items = v1.list_endpoints()
+            print(inspect_fields(items))
         elif args.cmd in ("test", "dump"):
             c = get(args.name)
             with VisionOneClient(crypto.decrypt(c.api_key_enc), c.region) as v1:

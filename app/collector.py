@@ -25,16 +25,32 @@ def _parse_dt(value) -> datetime | None:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
+def _sensor_installed(edr: dict) -> bool:
+    if not edr:
+        return False
+    status = str(edr.get("status") or edr.get("connectivity") or "").replace(" ", "").lower()
+    if status in ("notinstalled", "uninstalled", "none"):
+        return False
+    return any(edr.get(k) for k in ("version", "connectivity", "lastConnectedDateTime", "status"))
+
+
 def classify_protection(item: dict) -> str:
+    """Match the console's 'Security deployment' groups: SEP, SWP, Sensor only, or Unmanaged.
+
+    Seen in the console: Standard Endpoint Protection agents report protection manager "APEX ONE"
+    (or "Standard Endpoint Protection"); Server & Workload agents report "Server and Workload Protection".
+    """
     epp = item.get("eppAgent") or {}
     manager = str(epp.get("protectionManager") or item.get("protectionManager") or "").lower()
-    if "server" in manager or "workload" in manager:
+    if "server" in manager or "workload" in manager or "deep security" in manager:
         return "SWP"
-    if "standard" in manager:
+    if "standard" in manager or "apex" in manager or "officescan" in manager:
         return "SEP"
     if manager:
         return manager[:40]
-    return "Sensor only" if item.get("edrSensor") else "None"
+    if _sensor_installed(item.get("edrSensor") or {}):
+        return "Sensor only"
+    return "Unmanaged"
 
 
 def normalize_endpoint(item: dict, now: datetime | None = None) -> dict:
@@ -119,7 +135,6 @@ def summarize(endpoints: list[dict]) -> dict:
         "sep": prot.get("SEP", 0),
         "swp": prot.get("SWP", 0),
         "sensor_only": prot.get("Sensor only", 0),
-        "unprotected": prot.get("None", 0),
         "online": sum(1 for e in endpoints if e["online"]),
         "offline": sum(1 for e in endpoints if not e["online"]),
         "stale": sum(1 for e in endpoints if e["stale"]),
@@ -149,7 +164,11 @@ def collect_client(session, client: Client, v1: VisionOneClient | None = None) -
     rows = [normalize_endpoint(i, now) for i in raw_endpoints]
     # de-duplicate by guid
     rows = list({r["agent_guid"]: r for r in rows}.values())
+    # Only "All managed endpoints" (SEP + SWP + Sensor only) count, as in the console.
+    unmanaged = sum(1 for r in rows if r["protection"] == "Unmanaged")
+    rows = [r for r in rows if r["protection"] != "Unmanaged"]
     summary = summarize(rows)
+    summary["unmanaged"] = unmanaged
 
     session.execute(delete(Endpoint).where(Endpoint.client_id == client.id))
     session.add_all(Endpoint(client_id=client.id, **r) for r in rows)

@@ -14,6 +14,7 @@
   {% if client.last_poll_ok == False %}<span class="err">· failed: {{ client.last_error }}</span>{% endif %}
   {% if not graph_configured %}· <span class="warn">Outlook isn't set up yet, so the Report button falls back to a PDF download.</span>{% endif %}
   {% if report_to %}· Draft recipients: {{ report_to }}{% endif %}
+  {% if client.summary and client.summary.unmanaged %}· {{ client.summary.unmanaged }} unmanaged endpoints not counted{% endif %}
 </p>
 
 {% set s = client.summary or {} %}
