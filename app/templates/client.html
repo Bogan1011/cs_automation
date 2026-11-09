@@ -25,14 +25,28 @@
   <div class="kpi"><b>{{ s.online or 0 }}</b><span>Online</span></div>
   <div class="kpi {{ 'bad' if s.offline }}"><b>{{ s.offline or 0 }}</b><span>Offline</span></div>
   <div class="kpi {{ 'bad' if s.stale }}"><b>{{ s.stale or 0 }}</b><span>Not seen 7+ days</span></div>
-  <div class="kpi"><b>{{ s.up_to_date or 0 }}</b><span>Components up to date</span></div>
-  <div class="kpi {{ 'bad' if s.outdated }}"><b>{{ s.outdated or 0 }}</b><span>Components outdated</span></div>
+  <div class="kpi"><b>{{ s.up_to_date or 0 }}</b><span>Patterns up to date</span></div>
+  <div class="kpi {{ 'bad' if s.outdated }}"><b>{{ s.outdated or 0 }}</b><span>Patterns outdated</span></div>
   <div class="kpi {{ 'bad' if s.behind_latest }}"><b>{{ s.behind_latest or 0 }}</b><span>Agents behind latest version</span></div>
 </section>
 
-<h2>Patterns &amp; engines <span class="muted" style="font-size:13px;font-weight:500">latest = newest found across all clients</span></h2>
+<h2>Patterns &amp; engines <span class="muted" style="font-size:13px;font-weight:500">Trend's own verdict per endpoint: latest vs outdated</span></h2>
+{% set names = {'SEP': 'Standard Endpoint Protection', 'SWP': 'Server & Workload Protection', 'Sensor only': 'Sensor only'} %}
+<section class="versions">
+{% for prot, st in (s.component_status or {}).items() %}
+  {% set t = (st.latest or 0) + (st.outdated or 0) + (st.unknown or 0) %}
+  <div class="card">
+    <h3>{{ names.get(prot, prot) }}</h3>
+    <div class="vrow"><span class="v">Latest</span><span class="vbar"><i style="width:{{ (100 * (st.latest or 0) / t) | round(1) if t else 0 }}%"></i></span><b>{{ st.latest or 0 }}</b></div>
+    <div class="vrow"><span class="v">Outdated</span><span class="vbar"><i class="old" style="width:{{ (100 * (st.outdated or 0) / t) | round(1) if t else 0 }}%"></i></span><b class="{{ 'badtxt' if st.outdated }}">{{ st.outdated or 0 }}</b></div>
+    <div class="vrow"><span class="v">Unknown</span><span class="vbar"><i class="unk" style="width:{{ (100 * (st.unknown or 0) / t) | round(1) if t else 0 }}%"></i></span><b>{{ st.unknown or 0 }}</b></div>
+  </div>
+{% else %}
+  <p class="muted">No pattern status yet.</p>
+{% endfor %}
+</section>
 {% if patterns %}
-<div class="tablewrap" style="max-height:none">
+<div class="tablewrap" style="max-height:none;margin-top:16px">
 <table class="patterns"><thead><tr><th>Component</th><th>Latest</th><th>On latest</th><th style="width:40%"></th><th>Behind</th></tr></thead><tbody>
 {% for r in patterns %}
 <tr title="{% for v, n in r.versions.items() %}{{ v }}: {{ n }}&#10;{% endfor %}">
@@ -43,8 +57,6 @@
 {% endfor %}
 </tbody></table>
 </div>
-{% else %}
-<p class="muted">The API didn't return pattern versions for this client. Run <code>python -m app.cli inspect --name "{{ client.name }}"</code> and share the output so the field can be mapped.</p>
 {% endif %}
 
 <h2>Agent versions</h2>
@@ -56,7 +68,7 @@
     <h3>{{ names.get(prot, prot) }}</h3>
     {% for v, n in versions.items() %}
     <div class="vrow">
-      <span class="v">{{ v }}{% if v == (s.latest_versions or {}).get(prot) %} <span class="tag ok">latest</span>{% endif %}</span>
+      <span class="v">{{ v }}{% if v == (s.latest_versions or {}).get(prot) %} <span class="tag ok">newest</span>{% endif %}</span>
       <span class="vbar"><i style="width:{{ (100 * n / ptotal) | round(1) }}%" class="{{ '' if v == (s.latest_versions or {}).get(prot) else 'old' }}"></i></span>
       <b>{{ n }}</b>
     </div>
@@ -65,6 +77,18 @@
   {% else %}
   <p class="muted">No version data yet.</p>
   {% endfor %}
+  {% if s.agent_version_status %}
+  {% set atotal = s.agent_version_status.values() | sum %}
+  {% set alabels = {'latestVersion': 'Latest', 'updateRecommended': 'Update recommended', 'updateFailed': 'Update failed', 'osNotSupported': 'OS not supported', 'unknownVersions': 'Unknown'} %}
+  <div class="card">
+    <h3>Agent version status (Trend)</h3>
+    {% for k, n in s.agent_version_status.items() %}
+    <div class="vrow"><span class="v">{{ alabels.get(k, k) }}</span>
+      <span class="vbar"><i class="{{ '' if k == 'latestVersion' else ('old' if k in ('updateRecommended', 'updateFailed') else 'unk') }}" style="width:{{ (100 * n / atotal) | round(1) }}%"></i></span>
+      <b class="{{ 'badtxt' if k in ('updateRecommended', 'updateFailed') }}">{{ n }}</b></div>
+    {% endfor %}
+  </div>
+  {% endif %}
   {% if s.by_sensor_version %}
   {% set stotal = s.by_sensor_version.values() | sum %}
   <div class="card">
@@ -88,15 +112,16 @@
 </div>
 <div class="tablewrap">
 <table id="eps"><thead><tr>
-  <th>Endpoint</th><th>Protection</th><th>Status</th><th>Agent version</th><th>Patterns</th><th>Components</th><th>Sensor version</th><th>OS</th><th>IP</th><th>Policy</th><th>Last connected</th>
+  <th>Endpoint</th><th>Protection</th><th>Status</th><th>Agent version</th><th>Patterns</th><th>Update schedule</th><th>Sensor version</th><th>OS</th><th>IP</th><th>Policy</th><th>Last connected</th>
 </tr></thead><tbody>
 {% for e in endpoints %}
-<tr data-p="{{ e.protection }}" data-issue="{{ 1 if (e.stale or not e.online or e.behind_latest or behind[e.id] or 'outdated' in (e.update_status or '').lower()) else 0 }}">
+<tr data-p="{{ e.protection }}" data-issue="{{ 1 if (e.stale or not e.online or e.behind_latest or behind[e.id] or 'outdated' in (e.component_version or '').lower()) else 0 }}">
   <td>{{ e.name }}</td><td>{{ e.protection }}</td>
   <td><span class="dot {{ 'stale' if e.stale else ('on' if e.online else 'off') }}"></span>{{ 'stale' if e.stale else (e.agent_status or ('online' if e.online else 'offline')) }}</td>
   <td>{{ e.agent_version or '–' }}{% if e.behind_latest %} <span class="tag warn">old</span>{% endif %}</td>
-  <td>{% if behind[e.id] %}<span class="tag warn" title="{{ behind[e.id] | join(', ') }}">{{ behind[e.id] | length }} behind</span>{% elif e.components %}<span class="tag ok">current</span>{% else %}–{% endif %}</td>
-  <td>{{ e.update_status or e.component_version or '–' }}</td><td>{{ e.sensor_version or '–' }}</td>
+  {% set cs = e.component_version | lower %}
+  <td>{% if behind[e.id] %}<span class="tag warn" title="{{ behind[e.id] | join(', ') }}">{{ behind[e.id] | length }} behind</span>{% elif cs.startswith('outdated') %}<span class="tag warn">outdated</span>{% elif cs.startswith('latest') %}<span class="tag ok">latest</span>{% else %}<span class="muted">unknown</span>{% endif %}</td>
+  <td>{{ e.update_status or '–' }}</td><td>{{ e.sensor_version or '–' }}</td>
   <td>{{ e.os }}</td><td>{{ e.ip }}</td><td>{{ e.policy }}</td>
   <td class="ts">{{ e.last_connected.isoformat() if e.last_connected else '' }}</td>
 </tr>

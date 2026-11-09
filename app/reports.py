@@ -82,8 +82,9 @@ def build_report(session, client: Client) -> tuple[bytes, dict]:
     for label, key in [("Total endpoints", "total"), ("Standard Endpoint Protection", "sep"),
                        ("Server & Workload Protection", "swp"), ("Sensor only (no EPP agent)", "sensor_only"),
                        ("Online", "online"), ("Offline", "offline"),
-                       ("Not seen for 7+ days", "stale"), ("Components up to date", "up_to_date"),
-                       ("Components not up to date", "outdated"), ("Agent behind latest version", "behind_latest")]:
+                       ("Not seen for 7+ days", "stale"), ("Patterns up to date", "up_to_date"),
+                       ("Patterns outdated", "outdated"), ("Pattern status unknown", "components_unknown"),
+                       ("Agents needing update (Trend)", "behind_latest")]:
         rows.append([label, str(s.get(key, 0)), delta(key)])
     story.append(_table(rows, [90 * mm, 30 * mm, 50 * mm]))
 
@@ -98,6 +99,19 @@ def build_report(session, client: Client) -> tuple[bytes, dict]:
         story.append(_table(vrows, [70 * mm, 30 * mm, 30 * mm]))
 
     latest_all = global_latest(session)
+    cstat = s.get("component_status") or {}
+    if cstat:
+        story += [Spacer(1, 8), Paragraph("Pattern status by protection type", styles["Heading2"])]
+        crow = [["Protection", "Latest", "Outdated", "Unknown"]]
+        for prot, st in cstat.items():
+            crow.append([_PROT.get(prot, prot), str(st.get("latest", 0)), str(st.get("outdated", 0)), str(st.get("unknown", 0))])
+        story.append(_table(crow, [75 * mm, 30 * mm, 30 * mm, 30 * mm]))
+    avs = s.get("agent_version_status") or {}
+    if avs:
+        labels = {"latestVersion": "Latest", "updateRecommended": "Update recommended", "updateFailed": "Update failed",
+                  "osNotSupported": "OS not supported", "unknownVersions": "Unknown"}
+        story += [Spacer(1, 8), Paragraph("Agent version status", styles["Heading2"])]
+        story.append(_table([["Status", "Endpoints"]] + [[labels.get(k, k), str(v)] for k, v in avs.items()], [75 * mm, 30 * mm]))
     pstatus = pattern_status(s, latest_all)
     if pstatus:
         story += [Spacer(1, 8), Paragraph("Patterns and engines", styles["Heading2"]),
@@ -143,8 +157,8 @@ def report_email_html(client: Client, s: dict, old_patterns: int | None = None) 
 <ul>
 <li>Total endpoints: {s.get('total', 0)} (Standard Endpoint Protection {s.get('sep', 0)}, Server &amp; Workload Protection {s.get('swp', 0)})</li>
 <li>Online: {s.get('online', 0)} &nbsp; Offline: {s.get('offline', 0)} &nbsp; Not seen 7+ days: {s.get('stale', 0)}</li>
-<li>Components up to date: {s.get('up_to_date', 0)} &nbsp; Not up to date: {s.get('outdated', 0)}</li>
-<li>Agents behind the latest version: {s.get('behind_latest', 0)}</li>
+<li>Patterns up to date: {s.get('up_to_date', 0)} &nbsp; Outdated: {s.get('outdated', 0)} &nbsp; Unknown: {s.get('components_unknown', 0)}</li>
+<li>Agents needing an update: {s.get('behind_latest', 0)}</li>
 {f"<li>Endpoints with at least one pattern behind latest: {old_patterns}</li>" if old_patterns is not None else ""}
 {latest_line}
 </ul>

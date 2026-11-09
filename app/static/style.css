@@ -102,6 +102,7 @@ button:disabled{opacity:.55;cursor:progress;transform:none}
 .vbar{height:8px;border-radius:99px;background:var(--line);overflow:hidden}
 .vbar i{display:block;height:100%;border-radius:99px;background:var(--brand-grad);transition:width .9s var(--ease)}
 .vbar i.old{background:var(--warn)}
+.vbar i.unk{background:var(--muted)}
 .tag.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 15%,transparent)}
 .tag.warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 15%,transparent)}
 @media (max-width:640px){.versions{grid-template-columns:1fr}}

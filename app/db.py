@@ -51,6 +51,7 @@ class Endpoint(Base):
     sensor_version: Mapped[str] = mapped_column(String(80), default="")
     component_version: Mapped[str] = mapped_column(String(80), default="")
     behind_latest: Mapped[bool] = mapped_column(Boolean, default=False)
+    agent_version_status: Mapped[str] = mapped_column(String(40), default="")
     components: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {"Virus Pattern": "19.123.00", ...}
     edr_status: Mapped[str] = mapped_column(String(40), default="")
     last_connected: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

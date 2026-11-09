@@ -34,6 +34,11 @@ def _sensor_installed(edr: dict) -> bool:
     return any(edr.get(k) for k in ("version", "connectivity", "lastConnectedDateTime", "status"))
 
 
+def has_agent(epp: dict) -> bool:
+    v = str(epp.get("version") or "").strip()
+    return bool(v) and v.strip("0.") != ""
+
+
 def classify_protection(item: dict) -> str:
     """Match the console's 'Security deployment' groups: SEP, SWP, Sensor only, or Unmanaged.
 
@@ -42,11 +47,15 @@ def classify_protection(item: dict) -> str:
     """
     epp = item.get("eppAgent") or {}
     manager = str(epp.get("protectionManager") or item.get("protectionManager") or "").lower()
-    if "server" in manager or "workload" in manager or "deep security" in manager:
-        return "SWP"
-    if "standard" in manager or "apex" in manager or "officescan" in manager:
-        return "SEP"
     if manager:
+        # SWP lists cloud/connector-discovered computers with no agent: version blank or 0.0.0.0.
+        # Those are not in the console's "All managed endpoints".
+        if not has_agent(epp):
+            return "Unmanaged"
+        if "server" in manager or "workload" in manager or "deep security" in manager:
+            return "SWP"
+        if "standard" in manager or "apex" in manager or "officescan" in manager:
+            return "SEP"
         return manager[:40]
     if _sensor_installed(item.get("edrSensor") or {}):
         return "Sensor only"
@@ -112,14 +121,16 @@ def normalize_endpoint(item: dict, now: datetime | None = None) -> dict:
     if isinstance(ips, str):
         ips = [ips]
     last_conn = _parse_dt(epp.get("lastConnectedDateTime")) or _parse_dt(edr.get("lastConnectedDateTime"))
-    status = str(epp.get("status") or edr.get("connectivity") or edr.get("status") or "").lower()
-    online = status in ("on", "online", "connected", "enabled", "normal")
+    epp_status = str(epp.get("status") or "").lower()
+    status = epp_status if epp_status in ("on", "off") else str(edr.get("connectivity") or epp_status or "").lower()
+    online = status in ("on", "online", "connected")
     if not status and last_conn:
         online = now - last_conn < timedelta(hours=1)
     stale = bool(last_conn and now - last_conn > timedelta(days=settings.stale_days))
     agent_version = str(epp.get("version") or epp.get("agentVersion") or "")
     sensor_version = str(edr.get("version") or edr.get("sensorVersion") or "")
     component_version = str(epp.get("componentVersion") or edr.get("componentVersion") or "")
+    agent_version_status = str(item.get("agentVersionStatus") or epp.get("agentVersionStatus") or "")
     os_name = " ".join(str(x) for x in [item.get("osName"), item.get("osVersion")] if x)
     return {
         "agent_guid": str(item.get("agentGuid") or item.get("endpointGuid") or item.get("endpointName")),
@@ -136,6 +147,7 @@ def normalize_endpoint(item: dict, now: datetime | None = None) -> dict:
         "agent_version": agent_version[:80],
         "sensor_version": sensor_version[:80],
         "component_version": component_version[:80],
+        "agent_version_status": agent_version_status[:40],
         "components": extract_components(item),
         "edr_status": str(edr.get("status") or ""),
         "last_connected": last_conn,
@@ -159,6 +171,19 @@ def is_outdated(e: dict) -> bool:
     return False
 
 
+AGENT_BEHIND = ("updaterecommended", "updatefailed", "outdatedversion")
+
+
+def component_state(e: dict) -> str:
+    """latest / outdated / unknown, from Trend's componentVersion verdict (falls back to update status)."""
+    v = (e.get("component_version") or "").replace(" ", "").lower()
+    if v.startswith("latest") or v in ("uptodate", "up-to-date"):
+        return "latest"
+    if is_outdated(e):
+        return "outdated"
+    return "unknown"
+
+
 def mark_latest(endpoints: list[dict]) -> dict:
     """Latest agent version seen per protection type (SEP and SWP have separate version lines).
     Sets e['behind_latest'] and returns {protection: latest_version}."""
@@ -168,8 +193,12 @@ def mark_latest(endpoints: list[dict]) -> dict:
         if v and (e["protection"] not in latest or version_key(v) > version_key(latest[e["protection"]])):
             latest[e["protection"]] = v
     for e in endpoints:
-        v = e.get("agent_version")
-        e["behind_latest"] = bool(v and version_key(v) < version_key(latest[e["protection"]]))
+        trend = (e.get("agent_version_status") or "").lower()
+        if trend:  # Trend's own verdict wins
+            e["behind_latest"] = trend in AGENT_BEHIND
+        else:
+            v = e.get("agent_version")
+            e["behind_latest"] = bool(v and version_key(v) < version_key(latest[e["protection"]]))
     return latest
 
 
@@ -217,7 +246,13 @@ def summarize(endpoints: list[dict]) -> dict:
     for e in endpoints:
         by_version.setdefault(e["protection"], Counter())[e.get("agent_version") or "Unknown"] += 1
     sensor_versions = Counter(e.get("sensor_version") or "Unknown" for e in endpoints)
-    outdated = sum(1 for e in endpoints if is_outdated(e))
+    # Trend's per-endpoint verdicts (eppAgent.componentVersion / agentVersionStatus)
+    comp_status: dict[str, Counter] = {}
+    for e in endpoints:
+        comp_status.setdefault(e["protection"], Counter())[component_state(e)] += 1
+    agent_status = Counter(e.get("agent_version_status") or "unknown" for e in endpoints)
+    outdated = sum(1 for e in endpoints if component_state(e) == "outdated")
+    up_to_date = sum(1 for e in endpoints if component_state(e) == "latest")
     return {
         "total": len(endpoints),
         "sep": prot.get("SEP", 0),
@@ -227,7 +262,10 @@ def summarize(endpoints: list[dict]) -> dict:
         "offline": sum(1 for e in endpoints if not e["online"]),
         "stale": sum(1 for e in endpoints if e["stale"]),
         "outdated": outdated,
-        "up_to_date": len(endpoints) - outdated,
+        "up_to_date": up_to_date,
+        "components_unknown": len(endpoints) - outdated - up_to_date,
+        "component_status": {p: dict(c) for p, c in comp_status.items()},
+        "agent_version_status": dict(agent_status.most_common()),
         "behind_latest": sum(1 for e in endpoints if e.get("behind_latest")),
         "latest_versions": latest,
         "by_agent_version": {p: dict(sorted(c.items(), key=lambda kv: version_key(kv[0]), reverse=True))

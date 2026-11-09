@@ -63,11 +63,13 @@ def test_unknown_region_rejected():
 def test_collect_paginates_and_summarizes():
     cid = make_client()
     s = collect(cid)
-    assert s["total"] == 7 and s["unmanaged"] == 2  # matches console "All managed endpoints"
+    assert s["total"] == 7 and s["unmanaged"] == 4  # matches console "All managed endpoints"
     assert (s["sep"], s["swp"], s["sensor_only"]) == (3, 3, 1)  # APEX ONE -> SEP, "Server and Workload" -> SWP
-    assert s["offline"] == 1 and s["stale"] == 1 and s["outdated"] == 1 and s["up_to_date"] == 6
+    assert s["offline"] == 1 and s["stale"] == 1
+    assert (s["up_to_date"], s["outdated"], s["components_unknown"]) == (5, 1, 1)  # Trend's componentVersion verdict
+    assert s["component_status"]["SEP"] == {"latest": 2, "outdated": 1}
     assert s["latest_versions"] == {"SEP": "14.0.13100.1", "SWP": "20.0.1.7000"}
-    assert s["behind_latest"] == 1  # BL-LAP-002 on 14.0.12900.1
+    assert s["behind_latest"] == 1  # BL-LAP-002: agentVersionStatus updateRecommended
     assert s["by_agent_version"]["SEP"] == {"14.0.13100.1": 2, "14.0.12900.1": 1}
     with SessionLocal() as db:
         assert db.query(Endpoint).count() == 7

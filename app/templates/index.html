@@ -6,13 +6,13 @@
 </div>
 <section id="totals" class="kpis"></section>
 <section id="clients" class="grid"><div class="card skeleton"></div><div class="card skeleton"></div><div class="card skeleton"></div></section>
-<h2>Latest patterns <span class="muted" style="font-size:13px;font-weight:500">newest version found across all clients</span></h2>
-<section id="latest" class="card latest"></section>
+<h2 hidden>Latest patterns <span class="muted" style="font-size:13px;font-weight:500">newest version found across all clients</span></h2>
+<section id="latest" class="card latest" hidden></section>
 <h2>Comparison</h2>
 <div class="tablewrap">
 <table id="compare"><thead><tr>
   <th>Client</th><th>Region</th><th>Total</th><th>Standard EP</th><th>Server &amp; Workload</th>
-  <th>Online</th><th>Offline</th><th>Stale 7d+</th><th>Up to date</th><th>Outdated</th><th>Behind latest</th><th>Old patterns</th><th>Latest agent</th><th>Last poll</th>
+  <th>Online</th><th>Offline</th><th>Stale 7d+</th><th>Patterns latest</th><th>Patterns outdated</th><th>Agents behind</th><th>Latest agent</th><th>Last poll</th>
 </tr></thead><tbody></tbody></table>
 </div>
 {% endblock %}

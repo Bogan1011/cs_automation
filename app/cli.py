@@ -52,7 +52,8 @@ def inspect_fields(items: list[dict]) -> str:
         filled = sum(counts.values())
         leaf = path.split(".")[-1].replace("[]", "")
         line = f"{path}  (filled {filled})"
-        hidden = bool(SENSITIVE.search(leaf)) and not SAFE.search(leaf) and not leaf.lower().startswith("os")
+        hidden = (bool(SENSITIVE.search(leaf)) and not SAFE.search(leaf) and not leaf.lower().startswith("os")
+                  and "patterns[]" not in path)
         if "datetime" in leaf.lower():
             line += f"  [{len(counts)} distinct timestamps]"
         elif hidden:
