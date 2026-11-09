@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ client.name }} · Centralised Vision One{% endblock %}
+{% block content %}
+<div class="bar">
+  <div><a href="/" class="back">‹ All clients</a><h1>{{ client.name }} <span class="tag">{{ client.region }}</span></h1></div>
+  <div class="actions">
+    <button class="ghost" id="refresh" data-id="{{ client.id }}">Refresh now</button>
+    <a class="button ghost" href="/clients/{{ client.id }}/report.pdf">Download PDF</a>
+    <button id="report" data-id="{{ client.id }}">Report → Outlook draft</button>
+  </div>
+</div>
+<p class="muted">
+  Last poll: <span class="ts">{{ client.last_poll_at or 'never' }}</span>
+  {% if client.last_poll_ok == False %}<span class="err">· failed: {{ client.last_error }}</span>{% endif %}
+  {% if not graph_configured %}· <span class="warn">Outlook isn't set up yet, so the Report button falls back to a PDF download.</span>{% endif %}
+  {% if report_to %}· Draft recipients: {{ report_to }}{% endif %}
+</p>
+
+{% set s = client.summary or {} %}
+<section class="kpis">
+  <div class="kpi accent"><b>{{ s.total or 0 }}</b><span>Endpoints</span></div>
+  <div class="kpi"><b>{{ s.sep or 0 }}</b><span>Standard Endpoint Protection</span></div>
+  <div class="kpi"><b>{{ s.swp or 0 }}</b><span>Server &amp; Workload Protection</span></div>
+  <div class="kpi"><b>{{ s.online or 0 }}</b><span>Online</span></div>
+  <div class="kpi {{ 'bad' if s.offline }}"><b>{{ s.offline or 0 }}</b><span>Offline</span></div>
+  <div class="kpi {{ 'bad' if s.stale }}"><b>{{ s.stale or 0 }}</b><span>Not seen 7+ days</span></div>
+  <div class="kpi {{ 'bad' if s.outdated }}"><b>{{ s.outdated or 0 }}</b><span>Components outdated</span></div>
+  {% if s.alerts_7d %}<div class="kpi {{ 'bad' if s.alerts_7d.open }}"><b>{{ s.alerts_7d.open }}</b><span>Open alerts (7d)</span></div>{% endif %}
+</section>
+
+<h2>Endpoint inventory</h2>
+<div class="filters">
+  <input id="search" placeholder="Search name, IP, OS, policy…">
+  <div class="seg" id="prot">
+    <button data-p="" class="on">All</button><button data-p="SEP">Standard EP</button>
+    <button data-p="SWP">Server &amp; Workload</button><button data-p="Sensor only">Sensor only</button>
+  </div>
+  <label class="switch"><input type="checkbox" id="issues"> Only issues</label>
+</div>
+<div class="tablewrap">
+<table id="eps"><thead><tr>
+  <th>Endpoint</th><th>Protection</th><th>Status</th><th>OS</th><th>IP</th><th>Policy</th><th>Components</th><th>EDR</th><th>Last connected</th>
+</tr></thead><tbody>
+{% for e in endpoints %}
+<tr data-p="{{ e.protection }}" data-issue="{{ 1 if (e.stale or not e.online) else 0 }}">
+  <td>{{ e.name }}</td><td>{{ e.protection }}</td>
+  <td><span class="dot {{ 'stale' if e.stale else ('on' if e.online else 'off') }}"></span>{{ 'stale' if e.stale else (e.agent_status or ('online' if e.online else 'offline')) }}</td>
+  <td>{{ e.os }}</td><td>{{ e.ip }}</td><td>{{ e.policy }}</td><td>{{ e.update_status }}</td><td>{{ e.edr_status }}</td>
+  <td class="ts">{{ e.last_connected.isoformat() if e.last_connected else '' }}</td>
+</tr>
+{% else %}
+<tr><td colspan="9" class="muted">No endpoints collected yet.</td></tr>
+{% endfor %}
+</tbody></table>
+</div>
+{% endblock %}
+{% block scripts %}<script>startClient();</script>{% endblock %}

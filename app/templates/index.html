@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bar">
+  <h1>All clients</h1>
+  <span class="muted" id="updated">Loading…</span>
+</div>
+<section id="totals" class="kpis"></section>
+<section id="clients" class="grid"><div class="card skeleton"></div><div class="card skeleton"></div><div class="card skeleton"></div></section>
+<h2>Comparison</h2>
+<div class="tablewrap">
+<table id="compare"><thead><tr>
+  <th>Client</th><th>Region</th><th>Total</th><th>Standard EP</th><th>Server &amp; Workload</th>
+  <th>Online</th><th>Offline</th><th>Stale 7d+</th><th>Outdated</th><th>Open alerts 7d</th><th>Last poll</th>
+</tr></thead><tbody></tbody></table>
+</div>
+{% endblock %}
+{% block scripts %}<script>startOverview({{ poll_interval }});</script>{% endblock %}
