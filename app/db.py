@@ -47,6 +47,10 @@ class Endpoint(Base):
     online: Mapped[bool] = mapped_column(Boolean, default=False)
     stale: Mapped[bool] = mapped_column(Boolean, default=False)
     update_status: Mapped[str] = mapped_column(String(80), default="")
+    agent_version: Mapped[str] = mapped_column(String(80), default="")
+    sensor_version: Mapped[str] = mapped_column(String(80), default="")
+    component_version: Mapped[str] = mapped_column(String(80), default="")
+    behind_latest: Mapped[bool] = mapped_column(Boolean, default=False)
     edr_status: Mapped[str] = mapped_column(String(40), default="")
     last_connected: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     raw: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -81,3 +85,27 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 def init_db() -> None:
     Base.metadata.create_all(engine)
+    _add_missing_columns()
+
+
+def _add_missing_columns() -> None:
+    """Tiny forward-only migration: add columns introduced after a table was first created."""
+    from sqlalchemy import inspect, text
+    insp = inspect(engine)
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if not insp.has_table(table.name):
+                continue
+            existing = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in existing:
+                    continue
+                ddl_type = col.type.compile(dialect=engine.dialect)
+                default = col.default.arg if col.default is not None and not callable(col.default.arg) else None
+                if isinstance(default, bool):
+                    default_sql = " DEFAULT " + ("TRUE" if default else "FALSE")
+                elif isinstance(default, str):
+                    default_sql = " DEFAULT '" + default.replace("'", "''") + "'"
+                else:
+                    default_sql = ""
+                conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {col.name} {ddl_type}{default_sql}'))

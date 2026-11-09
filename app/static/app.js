@@ -54,18 +54,17 @@ function startOverview(pollSeconds) {
   }
   function render(clients) {
     const sum = k => clients.reduce((a, c) => a + ((c.summary || {})[k] || 0), 0);
-    const openAlerts = clients.reduce((a, c) => a + (((c.summary || {}).alerts_7d || {}).open || 0), 0);
     document.getElementById('totals').innerHTML = [
       ['Clients', clients.length], ['Endpoints', sum('total')], ['Standard Endpoint Protection', sum('sep')],
       ['Server & Workload Protection', sum('swp')], ['Offline', sum('offline'), true], ['Not seen 7+ days', sum('stale'), true],
-      ['Components outdated', sum('outdated'), true], ['Open alerts (7d)', openAlerts, true],
+      ['Components up to date', sum('up_to_date')], ['Components outdated', sum('outdated'), true], ['Agents behind latest', sum('behind_latest'), true],
     ].map(([l, v, b], i) => `<div class="kpi ${b && v ? 'bad' : (i === 1 ? 'accent' : '')}"><b>${num('t' + i, v)}</b><span>${esc(l)}</span></div>`).join('');
 
     document.getElementById('clients').innerHTML = clients.map(c => {
       const s = c.summary || {};
       const status = c.last_poll_ok === false ? '<span class="pill fail"><i></i>Poll failed</span>' : c.last_poll_ok ? '<span class="pill live"><i></i>Live</span>' : '<span class="pill"><i></i>Waiting for first poll</span>';
       const pct = s.total ? Math.round(100 * (s.online || 0) / s.total) : 0;
-      const n = k => num(c.id + k, k === 'alerts' ? (s.alerts_7d || {}).open : s[k]);
+      const n = k => num(c.id + k, s[k]);
       return `<a class="card client" href="/clients/${c.id}">
         <h3>${esc(c.name)} <span class="tag">${esc(c.region)}</span></h3>
         <div class="muted">${status} · ${fmtTime(c.last_poll_at)}</div>
@@ -78,15 +77,15 @@ function startOverview(pollSeconds) {
           <div><b>${n('swp')}</b><span>Server &amp; Workload</span></div>
           <div class="${s.offline ? 'bad' : ''}"><b>${n('offline')}</b><span>Offline</span></div>
           <div class="${s.outdated ? 'bad' : ''}"><b>${n('outdated')}</b><span>Outdated</span></div>
-          <div class="${(s.alerts_7d || {}).open ? 'bad' : ''}"><b>${n('alerts')}</b><span>Open alerts 7d</span></div>
+          <div class="${s.behind_latest ? 'bad' : ''}"><b>${n('behind_latest')}</b><span>Behind latest</span></div>
         </div></a>`;
     }).join('') || '<p class="muted">No clients yet. Add one with <code>python -m app.cli add-client</code>.</p>';
 
     document.querySelector('#compare tbody').innerHTML = clients.map(c => {
       const s = c.summary || {};
       return `<tr><td><a href="/clients/${c.id}">${esc(c.name)}</a></td><td>${esc(c.region)}</td>` +
-        ['total', 'sep', 'swp', 'online', 'offline', 'stale', 'outdated'].map(k => `<td class="num">${s[k] ?? '–'}</td>`).join('') +
-        `<td class="num">${(s.alerts_7d || {}).open ?? '–'}</td><td>${fmtTime(c.last_poll_at)}</td></tr>`;
+        ['total', 'sep', 'swp', 'online', 'offline', 'stale', 'up_to_date', 'outdated', 'behind_latest'].map(k => `<td class="num">${s[k] ?? '–'}</td>`).join('') +
+        `<td>${esc(['SEP', 'SWP'].filter(k => (s.latest_versions || {})[k]).map(k => k + ' ' + s.latest_versions[k]).join(' · ') || '–')}</td><td>${fmtTime(c.last_poll_at)}</td></tr>`;
     }).join('');
     countUp();
   }

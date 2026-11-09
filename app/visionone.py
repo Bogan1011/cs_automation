@@ -4,7 +4,6 @@ Uses a per-client API key (Administration > API Keys in each Vision One console)
 Docs: https://automation.trendmicro.com/xdr/api-v3
 """
 import time
-from datetime import datetime, timedelta, timezone
 from typing import Iterator
 
 import httpx
@@ -65,8 +64,3 @@ class VisionOneClient:
     # --- Endpoint Security: endpoint inventory incl. Standard Endpoint Protection / Server & Workload Protection
     def list_endpoints(self) -> list[dict]:
         return list(self._paginate("/v3.0/endpointSecurity/endpoints", params={"top": 200}))
-
-    # --- Workbench alerts (for the report and the alert counters)
-    def list_alerts(self, days: int = 7) -> list[dict]:
-        start = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        return list(self._paginate("/v3.0/workbench/alerts", params={"startDateTime": start}))

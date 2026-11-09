@@ -2,7 +2,7 @@
 
 A self-hosted dashboard for Eventus Security showing all managed Trend Vision One clients in one place.
 
-- **Live data every 5 minutes** from each client's Vision One tenant through the official public API (v3.0), including endpoint inventory, Standard Endpoint Protection, Server & Workload Protection, and Workbench alerts from the last 7 days.
+- **Live data every 5 minutes** from each client's Vision One tenant through the official public API (v3.0). It covers operational endpoint health only: endpoint counts, Standard Endpoint Protection versus Server & Workload Protection, online and offline status, component update status, and agent and sensor versions. It does **not** pull telemetry, detections or alerts.
 - **Overview page** shows every client with its health, plus a comparison table. **Client page** has the full endpoint inventory with search, filters by protection type, and an "only issues" switch.
 - **Report button** builds a PDF health report and creates a **draft** in your Outlook mailbox with the PDF attached. Nothing is ever sent automatically. If Outlook isn't configured yet, the button offers the PDF as a download.
 - Each client's API key is **encrypted at rest** with a master key that is kept outside the database.
@@ -13,7 +13,7 @@ Case management stays in the separate Trend portal and is out of scope here.
 
 Repeat this in each client's Vision One console (for example `portal.in.xdr.trendmicro.com` for Bandhan Life and IFL, and `portal.sg.xdr.trendmicro.com` for Clix Capital):
 
-1. **Administration → User Roles**: create a role named `Dashboard Read-Only` with *view* permission for **Endpoint Inventory / Endpoint Security** and **Workbench**. If you skip Workbench, the alert counters stay empty but everything else still works.
+1. **Administration → User Roles**: create a role named `Dashboard Read-Only` that has only *view* permission for **Endpoint Inventory / Endpoint Security**. Nothing else is needed.
 2. **Administration → API Keys → Add API key**: assign the role, set an expiry date, and copy the key.
 
 Region codes: `in` India, `sg` Singapore, `us` United States, `eu` Europe, `uk` United Kingdom, `jp` Japan, `au` Australia, `mea` Middle East & Africa. The region is the part of the portal URL after `portal.`.

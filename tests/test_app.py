@@ -10,10 +10,10 @@ from app.db import Base, Client, Endpoint, SessionLocal, Snapshot, engine
 from app.main import app
 from app.reports import build_report
 from app.visionone import VisionOneClient, VisionOneError
-from tests.fixtures import ALERTS, ENDPOINTS
+from tests.fixtures import ENDPOINTS
 
 
-def v1_transport(fail_alerts=False):
+def v1_transport():
     def handler(req: httpx.Request):
         assert req.headers["Authorization"] == "Bearer secret-key"
         if req.url.path == "/v3.0/endpointSecurity/endpoints":
@@ -21,10 +21,7 @@ def v1_transport(fail_alerts=False):
                 return httpx.Response(200, json={"items": ENDPOINTS[3:]})
             return httpx.Response(200, json={"items": ENDPOINTS[:3],
                                              "nextLink": str(req.url.copy_with(params={"skip": "x"}))})
-        if req.url.path == "/v3.0/workbench/alerts":
-            if fail_alerts:
-                return httpx.Response(403, json={"error": "no permission"})
-            return httpx.Response(200, json={"items": ALERTS})
+        assert "workbench" not in req.url.path and "search" not in req.url.path  # no telemetry/detections
         return httpx.Response(404)
     return httpx.MockTransport(handler)
 
@@ -68,8 +65,10 @@ def test_collect_paginates_and_summarizes():
     s = collect(cid)
     assert s["total"] == 5
     assert (s["sep"], s["swp"], s["sensor_only"]) == (2, 2, 1)
-    assert s["offline"] == 1 and s["stale"] == 1 and s["outdated"] == 1
-    assert s["alerts_7d"]["total"] == 3 and s["alerts_7d"]["open"] == 2
+    assert s["offline"] == 1 and s["stale"] == 1 and s["outdated"] == 1 and s["up_to_date"] == 4
+    assert s["latest_versions"] == {"SEP": "14.0.13100.1", "SWP": "20.0.1.7000"}
+    assert s["behind_latest"] == 1  # BL-LAP-002 on 14.0.12900.1
+    assert s["by_agent_version"]["SEP"] == {"14.0.13100.1": 1, "14.0.12900.1": 1}
     with SessionLocal() as db:
         assert db.query(Endpoint).count() == 5
         assert db.get(Client, cid).last_poll_ok is True
@@ -84,10 +83,8 @@ def test_repoll_replaces_endpoints_and_keeps_history():
         assert db.query(Snapshot).count() == 2
 
 
-def test_missing_alert_permission_still_collects_endpoints():
-    cid = make_client()
-    s = collect(cid, fail_alerts=True)
-    assert s["total"] == 5 and "alerts_7d" not in s
+def test_version_key_orders_numerically():
+    assert collector.version_key("14.0.13100.1") > collector.version_key("14.0.9999.1")
 
 
 def test_auth_error_is_clear():
@@ -134,7 +131,7 @@ def test_web_requires_login_and_renders():
         data = http.get("/api/overview").json()
         assert data["clients"][0]["summary"]["total"] == 5
         page = http.get(f"/clients/{cid}")
-        assert page.status_code == 200 and "BL-SRV-DB01" in page.text
+        assert page.status_code == 200 and "BL-SRV-DB01" in page.text and "Agent versions" in page.text
         assert http.get(f"/clients/{cid}/report.pdf").content.startswith(b"%PDF")
         r = http.post(f"/api/clients/{cid}/report")
         assert r.status_code == 400 and r.json()["download"]  # Outlook not configured -> PDF fallback

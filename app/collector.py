@@ -1,5 +1,6 @@
 """Pull data from every enabled client and store the latest state + a summary snapshot."""
 import logging
+import re
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 
@@ -8,7 +9,7 @@ from sqlalchemy import delete, select
 from . import crypto
 from .config import settings
 from .db import Client, Endpoint, SessionLocal, Snapshot, utcnow
-from .visionone import VisionOneClient, VisionOneError
+from .visionone import VisionOneClient
 
 log = logging.getLogger("collector")
 
@@ -49,6 +50,9 @@ def normalize_endpoint(item: dict, now: datetime | None = None) -> dict:
     if not status and last_conn:
         online = now - last_conn < timedelta(hours=1)
     stale = bool(last_conn and now - last_conn > timedelta(days=settings.stale_days))
+    agent_version = str(epp.get("version") or epp.get("agentVersion") or "")
+    sensor_version = str(edr.get("version") or edr.get("sensorVersion") or "")
+    component_version = str(epp.get("componentVersion") or edr.get("componentVersion") or "")
     os_name = " ".join(str(x) for x in [item.get("osName"), item.get("osVersion")] if x)
     return {
         "agent_guid": str(item.get("agentGuid") or item.get("endpointGuid") or item.get("endpointName")),
@@ -62,17 +66,55 @@ def normalize_endpoint(item: dict, now: datetime | None = None) -> dict:
         "online": online,
         "stale": stale,
         "update_status": str(epp.get("componentUpdateStatus") or ""),
+        "agent_version": agent_version[:80],
+        "sensor_version": sensor_version[:80],
+        "component_version": component_version[:80],
         "edr_status": str(edr.get("status") or ""),
         "last_connected": last_conn,
         "raw": item,
     }
 
 
-def summarize(endpoints: list[dict], alerts: list[dict] | None) -> dict:
+UP_TO_DATE = ("uptodate", "up-to-date", "up to date", "latest", "latestversion", "normal", "ok")
+
+
+def version_key(v: str) -> tuple:
+    """'14.0.12345.1' -> (14, 0, 12345, 1); non-numeric parts sort lowest."""
+    return tuple(int(p) if p.isdigit() else -1 for p in re.split(r"[.\-_ ]", v.strip()) if p)
+
+
+def is_outdated(e: dict) -> bool:
+    for field in ("update_status", "component_version"):
+        val = (e.get(field) or "").replace(" ", "").lower()
+        if val and ("outdated" in val or val in ("notuptodate", "failed", "updatefailed")):
+            return True
+    return False
+
+
+def mark_latest(endpoints: list[dict]) -> dict:
+    """Latest agent version seen per protection type (SEP and SWP have separate version lines).
+    Sets e['behind_latest'] and returns {protection: latest_version}."""
+    latest: dict[str, str] = {}
+    for e in endpoints:
+        v = e.get("agent_version")
+        if v and (e["protection"] not in latest or version_key(v) > version_key(latest[e["protection"]])):
+            latest[e["protection"]] = v
+    for e in endpoints:
+        v = e.get("agent_version")
+        e["behind_latest"] = bool(v and version_key(v) < version_key(latest[e["protection"]]))
+    return latest
+
+
+def summarize(endpoints: list[dict]) -> dict:
     prot = Counter(e["protection"] for e in endpoints)
     os_counter = Counter((e["os"].split(" ")[0] if e["os"] else "Unknown") for e in endpoints)
-    outdated = [e for e in endpoints if e["update_status"] and e["update_status"].lower() not in ("uptodate", "up-to-date", "up to date", "latest", "normal")]
-    summary = {
+    latest = mark_latest(endpoints)
+    by_version: dict[str, dict[str, int]] = {}
+    for e in endpoints:
+        by_version.setdefault(e["protection"], Counter())[e.get("agent_version") or "Unknown"] += 1
+    sensor_versions = Counter(e.get("sensor_version") or "Unknown" for e in endpoints)
+    outdated = sum(1 for e in endpoints if is_outdated(e))
+    return {
         "total": len(endpoints),
         "sep": prot.get("SEP", 0),
         "swp": prot.get("SWP", 0),
@@ -81,16 +123,17 @@ def summarize(endpoints: list[dict], alerts: list[dict] | None) -> dict:
         "online": sum(1 for e in endpoints if e["online"]),
         "offline": sum(1 for e in endpoints if not e["online"]),
         "stale": sum(1 for e in endpoints if e["stale"]),
-        "outdated": len(outdated),
+        "outdated": outdated,
+        "up_to_date": len(endpoints) - outdated,
+        "behind_latest": sum(1 for e in endpoints if e.get("behind_latest")),
+        "latest_versions": latest,
+        "by_agent_version": {p: dict(sorted(c.items(), key=lambda kv: version_key(kv[0]), reverse=True))
+                             for p, c in by_version.items()},
+        "by_sensor_version": dict(sorted(sensor_versions.items(), key=lambda kv: version_key(kv[0]), reverse=True)[:15]),
         "edr_enabled": sum(1 for e in endpoints if e["edr_status"].lower() in ("enabled", "on", "connected")),
         "by_protection": dict(prot),
         "by_os": dict(os_counter.most_common(8)),
     }
-    if alerts is not None:
-        sev = Counter(str(a.get("severity", "unknown")).lower() for a in alerts)
-        open_alerts = [a for a in alerts if str(a.get("status") or a.get("investigationStatus") or "").lower() not in ("closed", "true positive", "false positive", "benign true positive")]
-        summary["alerts_7d"] = {"total": len(alerts), "open": len(open_alerts), **dict(sev)}
-    return summary
 
 
 def collect_client(session, client: Client, v1: VisionOneClient | None = None) -> dict:
@@ -98,11 +141,6 @@ def collect_client(session, client: Client, v1: VisionOneClient | None = None) -
     v1 = v1 or VisionOneClient(crypto.decrypt(client.api_key_enc), client.region)
     try:
         raw_endpoints = v1.list_endpoints()
-        try:
-            alerts = v1.list_alerts(days=7)
-        except VisionOneError as exc:  # key may lack Workbench permission; keep endpoints anyway
-            log.warning("%s: alerts unavailable: %s", client.name, exc)
-            alerts = None
     finally:
         if own:
             v1.close()
@@ -111,7 +149,7 @@ def collect_client(session, client: Client, v1: VisionOneClient | None = None) -
     rows = [normalize_endpoint(i, now) for i in raw_endpoints]
     # de-duplicate by guid
     rows = list({r["agent_guid"]: r for r in rows}.values())
-    summary = summarize(rows, alerts)
+    summary = summarize(rows)
 
     session.execute(delete(Endpoint).where(Endpoint.client_id == client.id))
     session.add_all(Endpoint(client_id=client.id, **r) for r in rows)

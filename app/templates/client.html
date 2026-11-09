@@ -24,8 +24,39 @@
   <div class="kpi"><b>{{ s.online or 0 }}</b><span>Online</span></div>
   <div class="kpi {{ 'bad' if s.offline }}"><b>{{ s.offline or 0 }}</b><span>Offline</span></div>
   <div class="kpi {{ 'bad' if s.stale }}"><b>{{ s.stale or 0 }}</b><span>Not seen 7+ days</span></div>
+  <div class="kpi"><b>{{ s.up_to_date or 0 }}</b><span>Components up to date</span></div>
   <div class="kpi {{ 'bad' if s.outdated }}"><b>{{ s.outdated or 0 }}</b><span>Components outdated</span></div>
-  {% if s.alerts_7d %}<div class="kpi {{ 'bad' if s.alerts_7d.open }}"><b>{{ s.alerts_7d.open }}</b><span>Open alerts (7d)</span></div>{% endif %}
+  <div class="kpi {{ 'bad' if s.behind_latest }}"><b>{{ s.behind_latest or 0 }}</b><span>Agents behind latest version</span></div>
+</section>
+
+<h2>Agent versions</h2>
+<section class="versions">
+  {% set names = {'SEP': 'Standard Endpoint Protection', 'SWP': 'Server & Workload Protection'} %}
+  {% for prot, versions in (s.by_agent_version or {}).items() if prot in ('SEP', 'SWP') %}
+  {% set ptotal = versions.values() | sum %}
+  <div class="card">
+    <h3>{{ names.get(prot, prot) }}</h3>
+    {% for v, n in versions.items() %}
+    <div class="vrow">
+      <span class="v">{{ v }}{% if v == (s.latest_versions or {}).get(prot) %} <span class="tag ok">latest</span>{% endif %}</span>
+      <span class="vbar"><i style="width:{{ (100 * n / ptotal) | round(1) }}%" class="{{ '' if v == (s.latest_versions or {}).get(prot) else 'old' }}"></i></span>
+      <b>{{ n }}</b>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">No version data yet.</p>
+  {% endfor %}
+  {% if s.by_sensor_version %}
+  {% set stotal = s.by_sensor_version.values() | sum %}
+  <div class="card">
+    <h3>EDR sensor</h3>
+    {% for v, n in s.by_sensor_version.items() %}
+    <div class="vrow"><span class="v">{{ v }}</span>
+      <span class="vbar"><i style="width:{{ (100 * n / stotal) | round(1) }}%"></i></span><b>{{ n }}</b></div>
+    {% endfor %}
+  </div>
+  {% endif %}
 </section>
 
 <h2>Endpoint inventory</h2>
@@ -39,17 +70,19 @@
 </div>
 <div class="tablewrap">
 <table id="eps"><thead><tr>
-  <th>Endpoint</th><th>Protection</th><th>Status</th><th>OS</th><th>IP</th><th>Policy</th><th>Components</th><th>EDR</th><th>Last connected</th>
+  <th>Endpoint</th><th>Protection</th><th>Status</th><th>Agent version</th><th>Components</th><th>Sensor version</th><th>OS</th><th>IP</th><th>Policy</th><th>Last connected</th>
 </tr></thead><tbody>
 {% for e in endpoints %}
-<tr data-p="{{ e.protection }}" data-issue="{{ 1 if (e.stale or not e.online) else 0 }}">
+<tr data-p="{{ e.protection }}" data-issue="{{ 1 if (e.stale or not e.online or e.behind_latest or 'outdated' in (e.update_status or '').lower()) else 0 }}">
   <td>{{ e.name }}</td><td>{{ e.protection }}</td>
   <td><span class="dot {{ 'stale' if e.stale else ('on' if e.online else 'off') }}"></span>{{ 'stale' if e.stale else (e.agent_status or ('online' if e.online else 'offline')) }}</td>
-  <td>{{ e.os }}</td><td>{{ e.ip }}</td><td>{{ e.policy }}</td><td>{{ e.update_status }}</td><td>{{ e.edr_status }}</td>
+  <td>{{ e.agent_version or '–' }}{% if e.behind_latest %} <span class="tag warn">old</span>{% endif %}</td>
+  <td>{{ e.update_status or e.component_version or '–' }}</td><td>{{ e.sensor_version or '–' }}</td>
+  <td>{{ e.os }}</td><td>{{ e.ip }}</td><td>{{ e.policy }}</td>
   <td class="ts">{{ e.last_connected.isoformat() if e.last_connected else '' }}</td>
 </tr>
 {% else %}
-<tr><td colspan="9" class="muted">No endpoints collected yet.</td></tr>
+<tr><td colspan="10" class="muted">No endpoints collected yet.</td></tr>
 {% endfor %}
 </tbody></table>
 </div>
