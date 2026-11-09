@@ -198,6 +198,86 @@ def draft_report(request: Request, client_id: int):
     return {"ok": True, "web_link": link}
 
 
+FILTERS = {
+    "all": ("All endpoints", lambda e: True),
+    "online": ("Online", lambda e: e.online),
+    "offline": ("Offline", lambda e: not e.online),
+    "stale": ("Not seen for 7+ days", lambda e: e.stale),
+    "patterns_latest": ("Patterns up to date", lambda e: _cstate(e) == "latest"),
+    "patterns_outdated": ("Patterns outdated", lambda e: _cstate(e) == "outdated"),
+    "patterns_unknown": ("Pattern status unknown", lambda e: _cstate(e) == "unknown"),
+    "agent_behind": ("Agents needing an update", lambda e: e.behind_latest),
+}
+PROT_NAMES = {"SEP": "Standard Endpoint Protection", "SWP": "Server & Workload Protection", "Sensor only": "Sensor only"}
+
+
+def _cstate(e: Endpoint) -> str:
+    return collector.component_state({"component_version": e.component_version, "update_status": e.update_status})
+
+
+def _filtered(s, client_id: int | None, protection: str, flt: str, agent_status: str, version: str):
+    stmt = select(Endpoint, Client.name).join(Client).where(Client.enabled.is_(True))
+    if client_id:
+        stmt = stmt.where(Endpoint.client_id == client_id)
+    if protection:
+        stmt = stmt.where(Endpoint.protection == protection)
+    if agent_status:
+        stmt = stmt.where(Endpoint.agent_version_status == agent_status)
+    if version:
+        stmt = stmt.where(Endpoint.agent_version == version)
+    pred = FILTERS.get(flt, FILTERS["all"])[1]
+    rows = [(e, cname) for e, cname in s.execute(stmt.order_by(Client.name, Endpoint.name)).all() if pred(e)]
+    return rows
+
+
+def _list_title(client_name, protection, flt, agent_status, version):
+    parts = [FILTERS.get(flt, FILTERS["all"])[0]]
+    if protection:
+        parts.append(PROT_NAMES.get(protection, protection))
+    if agent_status:
+        parts.append(f"agent status {agent_status}")
+    if version:
+        parts.append(f"agent version {version}")
+    return " · ".join(parts), (client_name or "All clients")
+
+
+@app.get("/endpoints", response_class=HTMLResponse)
+def endpoint_list(request: Request, client: int | None = None, protection: str = "", filter: str = "all",
+                  agent_status: str = "", version: str = ""):
+    """Drill-down: every count on the dashboard links here with its filter."""
+    require_login(request)
+    with SessionLocal() as s:
+        c = s.get(Client, client) if client else None
+        rows = _filtered(s, client, protection, filter, agent_status, version)
+        title, scope = _list_title(c.name if c else None, protection, filter, agent_status, version)
+        return templates.TemplateResponse(request, "endpoints.html", {
+            "rows": rows, "title": title, "scope": scope, "client": c, "multi": c is None,
+            "csv_url": "/endpoints.csv?" + str(request.query_params),
+            "cstate": _cstate,
+        })
+
+
+@app.get("/endpoints.csv")
+def endpoint_list_csv(request: Request, client: int | None = None, protection: str = "", filter: str = "all",
+                      agent_status: str = "", version: str = ""):
+    require_login(request)
+    import csv
+    import io
+    with SessionLocal() as s:
+        rows = _filtered(s, client, protection, filter, agent_status, version)
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Client", "Endpoint", "Protection", "Status", "Agent version", "Agent version status", "Patterns",
+                "Sensor version", "OS", "IP", "Policy", "Last connected"])
+    for e, cname in rows:
+        w.writerow([cname, e.name, e.protection, "online" if e.online else "offline", e.agent_version,
+                    e.agent_version_status, _cstate(e), e.sensor_version, e.os, e.ip, e.policy,
+                    e.last_connected.isoformat() if e.last_connected else ""])
+    fname = f"endpoints_{filter}_{date.today():%Y-%m-%d}.csv"
+    return Response(buf.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
 @app.get("/healthz")
 def healthz():
     return {"ok": True}

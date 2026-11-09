@@ -55,36 +55,41 @@ function startOverview(pollSeconds) {
   function render(clients, latest) {
     const sum = k => clients.reduce((a, c) => a + ((c.summary || {})[k] || 0), 0);
     document.getElementById('totals').innerHTML = [
-      ['Clients', clients.length], ['Endpoints', sum('total')], ['Standard Endpoint Protection', sum('sep')],
-      ['Server & Workload Protection', sum('swp')], ['Offline', sum('offline'), true], ['Not seen 7+ days', sum('stale'), true],
-      ['Patterns up to date', sum('up_to_date')], ['Patterns outdated', sum('outdated'), true], ['Agents behind latest', sum('behind_latest'), true],
-    ].map(([l, v, b], i) => `<div class="kpi ${b && v ? 'bad' : (i === 1 ? 'accent' : '')}"><b>${num('t' + i, v)}</b><span>${esc(l)}</span></div>`).join('');
+      ['Clients', clients.length, false, '#clients'], ['Endpoints', sum('total'), false, '/endpoints'],
+      ['Standard Endpoint Protection', sum('sep'), false, '/endpoints?protection=SEP'],
+      ['Server & Workload Protection', sum('swp'), false, '/endpoints?protection=SWP'],
+      ['Offline', sum('offline'), true, '/endpoints?filter=offline'], ['Not seen 7+ days', sum('stale'), true, '/endpoints?filter=stale'],
+      ['Patterns up to date', sum('up_to_date'), false, '/endpoints?filter=patterns_latest'], ['Patterns outdated', sum('outdated'), true, '/endpoints?filter=patterns_outdated'], ['Agents needing update', sum('behind_latest'), true, '/endpoints?filter=agent_behind'],
+    ].map(([l, v, b, h], i) => `<a href="${h}" class="kpi ${b && v ? 'bad' : (i === 1 ? 'accent' : '')}"><b>${num('t' + i, v)}</b><span>${esc(l)}</span></a>`).join('');
 
     document.getElementById('clients').innerHTML = clients.map(c => {
       const s = c.summary || {};
       const status = c.last_poll_ok === false ? '<span class="pill fail"><i></i>Poll failed</span>' : c.last_poll_ok ? '<span class="pill live"><i></i>Live</span>' : '<span class="pill"><i></i>Waiting for first poll</span>';
       const pct = s.total ? Math.round(100 * (s.online || 0) / s.total) : 0;
       const n = k => num(c.id + k, s[k]);
-      return `<a class="card client" href="/clients/${c.id}">
-        <h3>${esc(c.name)} <span class="tag">${esc(c.region)}</span></h3>
+      const L = q => `/endpoints?client=${c.id}${q}`;
+      return `<div class="card client" onclick="if(!event.target.closest('a'))location.href='/clients/${c.id}'">
+        <h3><a href="/clients/${c.id}">${esc(c.name)}</a> <span class="tag">${esc(c.region)}</span></h3>
         <div class="muted">${status} · ${fmtTime(c.last_poll_at)}</div>
         ${c.last_poll_ok === false ? `<div class="err" style="font-size:12px">${esc((c.last_error || '').slice(0, 160))}</div>` : ''}
         <div class="health" title="${pct}% online"><span style="width:${pct}%"></span></div>
         <div class="muted" style="font-size:12px">${s.total ? pct + '% online' : '&nbsp;'}</div>
         <div class="nums">
-          <div><b>${n('total')}</b><span>Endpoints</span></div>
-          <div><b>${n('sep')}</b><span>Standard EP</span></div>
-          <div><b>${n('swp')}</b><span>Server &amp; Workload</span></div>
-          <div class="${s.offline ? 'bad' : ''}"><b>${n('offline')}</b><span>Offline</span></div>
-          <div class="${s.outdated ? 'bad' : ''}"><b>${num(c.id + 'pb', s.outdated)}</b><span>Patterns outdated</span></div>
-          <div class="${s.behind_latest ? 'bad' : ''}"><b>${n('behind_latest')}</b><span>Behind latest</span></div>
-        </div></a>`;
+          <a href="${L('')}"><b>${n('total')}</b><span>Endpoints</span></a>
+          <a href="${L('&protection=SEP')}"><b>${n('sep')}</b><span>Standard EP</span></a>
+          <a href="${L('&protection=SWP')}"><b>${n('swp')}</b><span>Server &amp; Workload</span></a>
+          <a href="${L('&filter=offline')}" class="${s.offline ? 'bad' : ''}"><b>${n('offline')}</b><span>Offline</span></a>
+          <a href="${L('&filter=patterns_outdated')}" class="${s.outdated ? 'bad' : ''}"><b>${num(c.id + 'pb', s.outdated)}</b><span>Patterns outdated</span></a>
+          <a href="${L('&filter=agent_behind')}" class="${s.behind_latest ? 'bad' : ''}"><b>${n('behind_latest')}</b><span>Agents need update</span></a>
+        </div></div>`;
     }).join('') || '<p class="muted">No clients yet. Add one with <code>python -m app.cli add-client</code>.</p>';
 
     document.querySelector('#compare tbody').innerHTML = clients.map(c => {
       const s = c.summary || {};
       return `<tr><td><a href="/clients/${c.id}">${esc(c.name)}</a></td><td>${esc(c.region)}</td>` +
-        ['total', 'sep', 'swp', 'online', 'offline', 'stale', 'up_to_date', 'outdated', 'behind_latest'].map(k => `<td class="num">${s[k] ?? '–'}</td>`).join('') +
+        [['total', ''], ['sep', '&protection=SEP'], ['swp', '&protection=SWP'], ['online', '&filter=online'], ['offline', '&filter=offline'],
+         ['stale', '&filter=stale'], ['up_to_date', '&filter=patterns_latest'], ['outdated', '&filter=patterns_outdated'],
+         ['behind_latest', '&filter=agent_behind']].map(([k, q]) => `<td class="num">${s[k] == null ? '–' : `<a class="cnt" href="/endpoints?client=${c.id}${q}">${s[k]}</a>`}</td>`).join('') +
         `<td>${esc(['SEP', 'SWP'].filter(k => (s.latest_versions || {})[k]).map(k => k + ' ' + s.latest_versions[k]).join(' · ') || '–')}</td><td>${fmtTime(c.last_poll_at)}</td></tr>`;
     }).join('');
     const names = Object.keys(latest).sort();

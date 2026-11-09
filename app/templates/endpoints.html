@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · {{ scope }}{% endblock %}
+{% block content %}
+<div class="bar">
+  <div>
+    <a href="{{ '/clients/%d' % client.id if client else '/' }}" class="back">‹ {{ client.name if client else 'All clients' }}</a>
+    <h1>{{ title }}</h1>
+    <p class="muted" style="margin:2px 0 0">{{ scope }} · <b>{{ rows | length }}</b> endpoints</p>
+  </div>
+  <div class="actions"><a class="button ghost" href="{{ csv_url }}">Export CSV</a></div>
+</div>
+<div class="filters" style="margin-top:16px"><input id="search" placeholder="Search name, IP, OS, policy…"></div>
+<div class="tablewrap">
+<table id="eps"><thead><tr>
+  {% if multi %}<th>Client</th>{% endif %}
+  <th>Endpoint</th><th>Protection</th><th>Status</th><th>Agent version</th><th>Agent status</th><th>Patterns</th><th>Sensor version</th><th>OS</th><th>IP</th><th>Policy</th><th>Last connected</th>
+</tr></thead><tbody>
+{% for e, cname in rows %}
+{% set cs = cstate(e) %}
+<tr data-p="">
+  {% if multi %}<td>{{ cname }}</td>{% endif %}
+  <td>{{ e.name }}</td><td>{{ e.protection }}</td>
+  <td><span class="dot {{ 'stale' if e.stale else ('on' if e.online else 'off') }}"></span>{{ 'stale' if e.stale else (e.agent_status or ('online' if e.online else 'offline')) }}</td>
+  <td>{{ e.agent_version or '–' }}</td>
+  <td>{% if e.behind_latest %}<span class="tag warn">{{ e.agent_version_status or 'behind' }}</span>{% else %}{{ e.agent_version_status or '–' }}{% endif %}</td>
+  <td>{% if cs == 'outdated' %}<span class="tag warn">outdated</span>{% elif cs == 'latest' %}<span class="tag ok">latest</span>{% else %}<span class="muted">unknown</span>{% endif %}</td>
+  <td>{{ e.sensor_version or '–' }}</td><td>{{ e.os }}</td><td>{{ e.ip }}</td><td>{{ e.policy }}</td>
+  <td class="ts">{{ e.last_connected.isoformat() if e.last_connected else '' }}</td>
+</tr>
+{% else %}
+<tr><td colspan="12" class="muted">No endpoints match.</td></tr>
+{% endfor %}
+</tbody></table>
+</div>
+{% endblock %}
+{% block scripts %}<script>
+const q = document.getElementById('search'), rows = [...document.querySelectorAll('#eps tbody tr[data-p]')];
+q.addEventListener('input', () => { const v = q.value.toLowerCase(); rows.forEach(r => r.style.display = !v || r.textContent.toLowerCase().includes(v) ? '' : 'none'); });
+</script>{% endblock %}

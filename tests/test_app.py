@@ -166,3 +166,17 @@ def test_extract_components_flat_keys():
     comps = collector.extract_components({"eppAgent": {"version": "14.0.1.1", "spywarePatternVersion": "2.871.00"},
                                           "edrSensor": {"version": "1.2.3.4"}})
     assert comps == {"Spyware Pattern": "2.871.00"}
+
+
+def test_drilldown_lists_and_csv():
+    cid = make_client()
+    collect(cid)
+    with TestClient(app) as http:
+        http.post("/login", data={"username": "admin", "password": "pw"})
+        page = http.get(f"/endpoints?client={cid}&protection=SEP&filter=patterns_outdated")
+        assert page.status_code == 200 and "BL-LAP-002" in page.text and "BL-LAP-001" not in page.text
+        assert "<b>1</b> endpoints" in page.text
+        allp = http.get("/endpoints?filter=agent_behind")
+        assert "BL-LAP-002" in allp.text and "Bandhan Life" in allp.text
+        csv = http.get(f"/endpoints.csv?client={cid}&protection=SWP").text
+        assert csv.count("\n") == 1 + 3 and "BL-SRV-DB01" in csv
