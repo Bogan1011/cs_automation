@@ -87,9 +87,11 @@ def logout(request: Request):
     return RedirectResponse("/login", status_code=303)
 
 
-def _client_card(session, c: Client) -> dict:
+def _client_card(session, c: Client, latest: dict | None = None) -> dict:
     snap = reports.latest_summary(session, c.id)
+    patterns_behind = reports.endpoints_with_old_patterns(session, c.id, latest) if latest else None
     return {
+        "patterns_behind": patterns_behind,
         "id": c.id, "name": c.name, "region": c.region.upper(),
         "last_poll_at": c.last_poll_at.isoformat() if c.last_poll_at else None,
         "last_poll_ok": c.last_poll_ok, "last_error": c.last_error,
@@ -108,7 +110,8 @@ def api_overview(request: Request):
     require_login(request)
     with SessionLocal() as s:
         clients = s.scalars(select(Client).where(Client.enabled.is_(True)).order_by(Client.name)).all()
-        return {"clients": [_client_card(s, c) for c in clients]}
+        latest = reports.global_latest(s)
+        return {"clients": [_client_card(s, c, latest) for c in clients], "latest_patterns": latest}
 
 
 @app.get("/clients/{client_id}", response_class=HTMLResponse)
@@ -116,11 +119,15 @@ def client_page(request: Request, client_id: int):
     require_login(request)
     with SessionLocal() as s:
         c = s.get(Client, client_id) or _404()
+        latest = reports.global_latest(s)
         endpoints = s.scalars(select(Endpoint).where(Endpoint.client_id == c.id).order_by(Endpoint.name)).all()
         history = s.scalars(select(Snapshot).where(Snapshot.client_id == c.id)
                             .order_by(Snapshot.taken_at.desc()).limit(288)).all()
+        card = _client_card(s, c, latest)
         return templates.TemplateResponse(request, "client.html", {
-            "client": _client_card(s, c), "endpoints": endpoints,
+            "client": card, "endpoints": endpoints,
+            "patterns": collector.pattern_status(card["summary"] or {}, latest),
+            "behind": {e.id: collector.components_behind(e.components, latest) for e in endpoints},
             "history": [{"t": h.taken_at.isoformat(), "total": h.summary.get("total", 0),
                          "online": h.summary.get("online", 0)} for h in reversed(history)],
             "graph_configured": settings.graph_configured, "report_to": c.report_to,
@@ -173,10 +180,12 @@ def draft_report(request: Request, client_id: int):
             pdf, summary = reports.build_report(s, c)
         except RuntimeError as exc:
             return JSONResponse({"ok": False, "error": str(exc)}, status_code=409)
+        latest = reports.global_latest(s)
+        old_patterns = reports.endpoints_with_old_patterns(s, c.id, latest) if latest else None
     try:
         link = outlook.create_draft(
             subject=f"{c.name} | Trend Vision One health report | {date.today():%d %b %Y}",
-            html_body=reports.report_email_html(c, summary),
+            html_body=reports.report_email_html(c, summary, old_patterns),
             to=[a.strip() for a in c.report_to.split(",")],
             attachment_name=_filename(c), attachment=pdf,
         )

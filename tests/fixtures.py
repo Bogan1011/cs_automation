@@ -7,7 +7,7 @@ def iso(dt):
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def endpoint(guid, name, manager, status="on", days_ago=0, update="upToDate", edr="enabled", os_name="Windows", version=None):
+def endpoint(guid, name, manager, status="on", days_ago=0, update="upToDate", edr="enabled", os_name="Windows", version=None, virus="19.123.00"):
     item = {
         "agentGuid": guid, "endpointName": name, "type": "server" if "Server" in manager else "desktop",
         "osName": os_name, "osVersion": "10", "ipAddresses": ["10.0.0.%d" % (len(guid) % 250)],
@@ -17,7 +17,9 @@ def endpoint(guid, name, manager, status="on", days_ago=0, update="upToDate", ed
         item["eppAgent"] = {"protectionManager": manager, "policyName": "Default", "status": status,
                             "lastConnectedDateTime": iso(NOW - timedelta(days=days_ago)),
                             "componentUpdateStatus": update,
-                            "version": version or ("20.0.1.7000" if "Server" in manager else "14.0.13100.1")}
+                            "version": version or ("20.0.1.7000" if "Server" in manager else "14.0.13100.1"),
+                            "components": [{"name": "Virus Pattern", "version": virus},
+                                           {"name": "Digital Signature Pattern", "version": "1.987.00"}]}
     return item
 
 
@@ -28,7 +30,7 @@ ENDPOINTS = [
     endpoint("g3", "BL-SRV-DB01", "Server & Workload Protection", os_name="Linux"),
     endpoint("g4", "BL-SRV-WEB01", "Server & Workload Protection"),
     endpoint("g5", "BL-KIOSK", ""),
-    endpoint("g6", "BL-LAP-APEX", "APEX ONE"),
+    endpoint("g6", "BL-LAP-APEX", "APEX ONE", virus="19.121.00"),
     endpoint("g7", "BL-SRV-AND", "Server and Workload Protection"),
     # unmanaged (discovered, no agent/sensor) — must not be counted
     {"agentGuid": "u1", "endpointName": "UNMANAGED-PC", "eppAgent": {}, "edrSensor": {}},

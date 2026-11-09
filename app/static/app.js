@@ -48,16 +48,17 @@ function startOverview(pollSeconds) {
   async function load() {
     try {
       const data = await (await api('/api/overview')).json();
-      render(data.clients);
+      render(data.clients, data.latest_patterns || {});
       document.getElementById('updated').textContent = 'Updated ' + new Date().toLocaleTimeString() + ' · data refreshes every ' + Math.round(pollSeconds / 60) + ' min';
     } catch (e) { document.getElementById('updated').textContent = 'Could not load data: ' + e.message; }
   }
-  function render(clients) {
+  function render(clients, latest) {
     const sum = k => clients.reduce((a, c) => a + ((c.summary || {})[k] || 0), 0);
     document.getElementById('totals').innerHTML = [
       ['Clients', clients.length], ['Endpoints', sum('total')], ['Standard Endpoint Protection', sum('sep')],
       ['Server & Workload Protection', sum('swp')], ['Offline', sum('offline'), true], ['Not seen 7+ days', sum('stale'), true],
       ['Components up to date', sum('up_to_date')], ['Components outdated', sum('outdated'), true], ['Agents behind latest', sum('behind_latest'), true],
+      ['Endpoints with old patterns', clients.reduce((a, c) => a + (c.patterns_behind || 0), 0), true],
     ].map(([l, v, b], i) => `<div class="kpi ${b && v ? 'bad' : (i === 1 ? 'accent' : '')}"><b>${num('t' + i, v)}</b><span>${esc(l)}</span></div>`).join('');
 
     document.getElementById('clients').innerHTML = clients.map(c => {
@@ -76,7 +77,7 @@ function startOverview(pollSeconds) {
           <div><b>${n('sep')}</b><span>Standard EP</span></div>
           <div><b>${n('swp')}</b><span>Server &amp; Workload</span></div>
           <div class="${s.offline ? 'bad' : ''}"><b>${n('offline')}</b><span>Offline</span></div>
-          <div class="${s.outdated ? 'bad' : ''}"><b>${n('outdated')}</b><span>Outdated</span></div>
+          <div class="${c.patterns_behind ? 'bad' : ''}"><b>${num(c.id + 'pb', c.patterns_behind)}</b><span>Old patterns</span></div>
           <div class="${s.behind_latest ? 'bad' : ''}"><b>${n('behind_latest')}</b><span>Behind latest</span></div>
         </div></a>`;
     }).join('') || '<p class="muted">No clients yet. Add one with <code>python -m app.cli add-client</code>.</p>';
@@ -85,8 +86,13 @@ function startOverview(pollSeconds) {
       const s = c.summary || {};
       return `<tr><td><a href="/clients/${c.id}">${esc(c.name)}</a></td><td>${esc(c.region)}</td>` +
         ['total', 'sep', 'swp', 'online', 'offline', 'stale', 'up_to_date', 'outdated', 'behind_latest'].map(k => `<td class="num">${s[k] ?? '–'}</td>`).join('') +
+        `<td class="num">${c.patterns_behind ?? '–'}</td>` +
         `<td>${esc(['SEP', 'SWP'].filter(k => (s.latest_versions || {})[k]).map(k => k + ' ' + s.latest_versions[k]).join(' · ') || '–')}</td><td>${fmtTime(c.last_poll_at)}</td></tr>`;
     }).join('');
+    const names = Object.keys(latest).sort();
+    document.getElementById('latest').innerHTML = names.length
+      ? names.map(k => `<div class="lp"><span>${esc(k)}</span><b>${esc(latest[k])}</b></div>`).join('')
+      : '<p class="muted">No pattern versions in the API data yet.</p>';
     countUp();
   }
   load();

@@ -10,7 +10,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy import select
 
-from .collector import is_outdated
+from .collector import components_behind, is_outdated, latest_components, pattern_status
 from .db import Client, Endpoint, Snapshot, utcnow
 
 _PROT = {"SEP": "Standard Endpoint Protection", "SWP": "Server & Workload Protection"}
@@ -34,6 +34,18 @@ def _table(rows, widths=None):
 def latest_summary(session, client_id: int) -> Snapshot | None:
     return session.scalars(select(Snapshot).where(Snapshot.client_id == client_id)
                            .order_by(Snapshot.taken_at.desc()).limit(1)).first()
+
+
+def global_latest(session) -> dict[str, str]:
+    """Latest version of every pattern found across all enabled clients."""
+    clients = session.scalars(select(Client).where(Client.enabled.is_(True))).all()
+    snaps = [latest_summary(session, c.id) for c in clients]
+    return latest_components([sn.summary for sn in snaps if sn])
+
+
+def endpoints_with_old_patterns(session, client_id: int, latest: dict[str, str]) -> int:
+    comps = session.scalars(select(Endpoint.components).where(Endpoint.client_id == client_id)).all()
+    return sum(1 for c in comps if components_behind(c, latest))
 
 
 def build_report(session, client: Client) -> tuple[bytes, dict]:
@@ -85,20 +97,32 @@ def build_report(session, client: Client) -> tuple[bytes, dict]:
             vrows.append([v, str(n), "latest" if v == latest.get(prot) else ""])
         story.append(_table(vrows, [70 * mm, 30 * mm, 30 * mm]))
 
+    latest_all = global_latest(session)
+    pstatus = pattern_status(s, latest_all)
+    if pstatus:
+        story += [Spacer(1, 8), Paragraph("Patterns and engines", styles["Heading2"]),
+                  Paragraph("Latest = newest version found across all managed clients.", styles["Italic"])]
+        prow = [["Component", "Latest version", "On latest", "Behind"]]
+        for r in pstatus:
+            prow.append([r["name"][:45], r["latest"] or "-", str(r["current"]), str(r["behind"])])
+        story.append(_table(prow, [75 * mm, 40 * mm, 25 * mm, 25 * mm]))
+
     if s.get("by_os"):
         story += [Spacer(1, 8), Paragraph("Operating systems", styles["Heading2"])]
         story.append(_table([["OS", "Endpoints"]] + [[k, str(v)] for k, v in s["by_os"].items()], [90 * mm, 30 * mm]))
 
     attention = [e for e in endpoints if e.stale or not e.online or e.behind_latest
+                 or components_behind(e.components, latest_all)
                  or is_outdated({"update_status": e.update_status, "component_version": e.component_version})]
     story += [Spacer(1, 8), Paragraph(f"Endpoints needing attention ({len(attention)})", styles["Heading2"])]
     if attention:
-        arows = [["Endpoint", "Protection", "Status", "Last connected", "Agent version", "Components"]]
+        arows = [["Endpoint", "Protection", "Status", "Last connected", "Agent version", "Patterns behind"]]
         for e in attention[:200]:
+            behind = components_behind(e.components, latest_all)
             arows.append([e.name[:36], e.protection, ("stale" if e.stale else e.agent_status or "offline"),
                           e.last_connected.strftime("%d %b %Y %H:%M") if e.last_connected else "-",
                           (e.agent_version or "-") + (" (old)" if e.behind_latest else ""),
-                          e.update_status or e.component_version or "-"])
+                          str(len(behind)) if behind else (e.update_status or "-")])
         story.append(_table(arows, [48 * mm, 18 * mm, 18 * mm, 32 * mm, 34 * mm, 30 * mm]))
         if len(attention) > 200:
             story.append(Paragraph(f"…and {len(attention) - 200} more.", styles["Italic"]))
@@ -111,7 +135,7 @@ def build_report(session, client: Client) -> tuple[bytes, dict]:
     return buf.getvalue(), s
 
 
-def report_email_html(client: Client, s: dict) -> str:
+def report_email_html(client: Client, s: dict, old_patterns: int | None = None) -> str:
     latest = s.get("latest_versions") or {}
     latest_line = "".join(f"<li>Latest {_PROT.get(p, p)} agent version: {html.escape(v)}</li>" for p, v in latest.items())
     return f"""<p>Hi team,</p>
@@ -121,6 +145,7 @@ def report_email_html(client: Client, s: dict) -> str:
 <li>Online: {s.get('online', 0)} &nbsp; Offline: {s.get('offline', 0)} &nbsp; Not seen 7+ days: {s.get('stale', 0)}</li>
 <li>Components up to date: {s.get('up_to_date', 0)} &nbsp; Not up to date: {s.get('outdated', 0)}</li>
 <li>Agents behind the latest version: {s.get('behind_latest', 0)}</li>
+{f"<li>Endpoints with at least one pattern behind latest: {old_patterns}</li>" if old_patterns is not None else ""}
 {latest_line}
 </ul>
 <p>Regards,</p>"""

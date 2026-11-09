@@ -131,7 +131,7 @@ def test_web_requires_login_and_renders():
         data = http.get("/api/overview").json()
         assert data["clients"][0]["summary"]["total"] == 7
         page = http.get(f"/clients/{cid}")
-        assert page.status_code == 200 and "BL-SRV-DB01" in page.text and "Agent versions" in page.text
+        assert page.status_code == 200 and "BL-SRV-DB01" in page.text and "Agent versions" in page.text and "Virus Pattern" in page.text
         assert http.get(f"/clients/{cid}/report.pdf").content.startswith(b"%PDF")
         r = http.post(f"/api/clients/{cid}/report")
         assert r.status_code == 400 and r.json()["download"]  # Outlook not configured -> PDF fallback
@@ -143,3 +143,24 @@ def test_naive_timestamps_are_treated_as_utc():
     item["eppAgent"]["lastConnectedDateTime"] = "2026-11-01T10:00:00"
     row = collector.normalize_endpoint(item)
     assert row["last_connected"].tzinfo is not None and row["stale"] is True
+
+
+def test_patterns_latest_across_clients_and_behind_counts():
+    from app import reports
+    a = make_client("Bandhan Life")
+    b = make_client("Clix Capital", "sg")
+    collect(a)
+    collect(b)
+    with SessionLocal() as s:
+        latest = reports.global_latest(s)
+        assert latest == {"Virus Pattern": "19.123.00", "Digital Signature Pattern": "1.987.00"}
+        assert reports.endpoints_with_old_patterns(s, a, latest) == 1  # BL-LAP-APEX on 19.121.00
+        rows = collector.pattern_status(reports.latest_summary(s, a).summary, latest)
+        virus = next(r for r in rows if r["name"] == "Virus Pattern")
+        assert (virus["current"], virus["behind"]) == (5, 1)
+
+
+def test_extract_components_flat_keys():
+    comps = collector.extract_components({"eppAgent": {"version": "14.0.1.1", "spywarePatternVersion": "2.871.00"},
+                                          "edrSensor": {"version": "1.2.3.4"}})
+    assert comps == {"Spyware Pattern": "2.871.00"}

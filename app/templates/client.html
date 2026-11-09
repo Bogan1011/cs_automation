@@ -30,6 +30,23 @@
   <div class="kpi {{ 'bad' if s.behind_latest }}"><b>{{ s.behind_latest or 0 }}</b><span>Agents behind latest version</span></div>
 </section>
 
+<h2>Patterns &amp; engines <span class="muted" style="font-size:13px;font-weight:500">latest = newest found across all clients</span></h2>
+{% if patterns %}
+<div class="tablewrap" style="max-height:none">
+<table class="patterns"><thead><tr><th>Component</th><th>Latest</th><th>On latest</th><th style="width:40%"></th><th>Behind</th></tr></thead><tbody>
+{% for r in patterns %}
+<tr title="{% for v, n in r.versions.items() %}{{ v }}: {{ n }}&#10;{% endfor %}">
+  <td>{{ r.name }}</td><td class="mono">{{ r.latest or '–' }}</td><td class="num">{{ r.current }}</td>
+  <td><span class="vbar"><i style="width:{{ (100 * r.current / r.total) | round(1) if r.total else 0 }}%"></i></span></td>
+  <td class="num {{ 'badtxt' if r.behind }}">{{ r.behind }}</td>
+</tr>
+{% endfor %}
+</tbody></table>
+</div>
+{% else %}
+<p class="muted">The API didn't return pattern versions for this client. Run <code>python -m app.cli inspect --name "{{ client.name }}"</code> and share the output so the field can be mapped.</p>
+{% endif %}
+
 <h2>Agent versions</h2>
 <section class="versions">
   {% set names = {'SEP': 'Standard Endpoint Protection', 'SWP': 'Server & Workload Protection'} %}
@@ -71,19 +88,20 @@
 </div>
 <div class="tablewrap">
 <table id="eps"><thead><tr>
-  <th>Endpoint</th><th>Protection</th><th>Status</th><th>Agent version</th><th>Components</th><th>Sensor version</th><th>OS</th><th>IP</th><th>Policy</th><th>Last connected</th>
+  <th>Endpoint</th><th>Protection</th><th>Status</th><th>Agent version</th><th>Patterns</th><th>Components</th><th>Sensor version</th><th>OS</th><th>IP</th><th>Policy</th><th>Last connected</th>
 </tr></thead><tbody>
 {% for e in endpoints %}
-<tr data-p="{{ e.protection }}" data-issue="{{ 1 if (e.stale or not e.online or e.behind_latest or 'outdated' in (e.update_status or '').lower()) else 0 }}">
+<tr data-p="{{ e.protection }}" data-issue="{{ 1 if (e.stale or not e.online or e.behind_latest or behind[e.id] or 'outdated' in (e.update_status or '').lower()) else 0 }}">
   <td>{{ e.name }}</td><td>{{ e.protection }}</td>
   <td><span class="dot {{ 'stale' if e.stale else ('on' if e.online else 'off') }}"></span>{{ 'stale' if e.stale else (e.agent_status or ('online' if e.online else 'offline')) }}</td>
   <td>{{ e.agent_version or '–' }}{% if e.behind_latest %} <span class="tag warn">old</span>{% endif %}</td>
+  <td>{% if behind[e.id] %}<span class="tag warn" title="{{ behind[e.id] | join(', ') }}">{{ behind[e.id] | length }} behind</span>{% elif e.components %}<span class="tag ok">current</span>{% else %}–{% endif %}</td>
   <td>{{ e.update_status or e.component_version or '–' }}</td><td>{{ e.sensor_version or '–' }}</td>
   <td>{{ e.os }}</td><td>{{ e.ip }}</td><td>{{ e.policy }}</td>
   <td class="ts">{{ e.last_connected.isoformat() if e.last_connected else '' }}</td>
 </tr>
 {% else %}
-<tr><td colspan="10" class="muted">No endpoints collected yet.</td></tr>
+<tr><td colspan="11" class="muted">No endpoints collected yet.</td></tr>
 {% endfor %}
 </tbody></table>
 </div>

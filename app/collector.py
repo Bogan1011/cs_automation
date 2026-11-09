@@ -53,6 +53,57 @@ def classify_protection(item: dict) -> str:
     return "Unmanaged"
 
 
+_VERSION_RE = re.compile(r"^\d+(\.\d+)+$")
+_NAME_KEYS = ("componentName", "name", "displayName", "component", "type")
+_VER_KEYS = ("version", "componentVersion", "currentVersion", "patternVersion")
+# Agent/sensor program versions are tracked separately, not as patterns.
+_SKIP_PATHS = {"eppAgent.version", "eppAgent.agentVersion", "edrSensor.version", "edrSensor.sensorVersion"}
+
+
+def _pretty(label: str) -> str:
+    label = label.split(".")[-1].replace("[]", "")
+    label = re.sub(r"(Version|Ver)$", "", label)
+    label = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", label).replace("_", " ").strip()
+    return label[:1].upper() + label[1:]
+
+
+def extract_components(item: dict) -> dict[str, str]:
+    """Find pattern/engine versions anywhere in an endpoint record.
+
+    Handles both shapes Vision One may use:
+      * lists of {"name"/"componentName": ..., "version": ...}
+      * flat keys such as "virusPatternVersion": "19.123.00"
+    """
+    found: dict[str, str] = {}
+
+    def add(label, ver):
+        ver = str(ver).strip()
+        if label and _VERSION_RE.match(ver):
+            label = str(label).strip()
+            if label not in found or version_key(ver) > version_key(found[label]):
+                found[label] = ver
+
+    def walk(obj, path=""):
+        if isinstance(obj, dict):
+            name = next((obj[k] for k in _NAME_KEYS if isinstance(obj.get(k), str) and obj.get(k)), None)
+            ver = next((obj[k] for k in _VER_KEYS if obj.get(k) not in (None, "")), None)
+            if name and ver is not None and not isinstance(ver, (dict, list)):
+                add(name, ver)
+                return
+            for k, v in obj.items():
+                sub = f"{path}.{k}" if path else k
+                if isinstance(v, (dict, list)):
+                    walk(v, sub)
+                elif sub not in _SKIP_PATHS and re.search(r"pattern|engine|signature|rule|filter", k, re.I):
+                    add(_pretty(k), v)
+        elif isinstance(obj, list):
+            for x in obj:
+                walk(x, path + "[]")
+
+    walk(item)
+    return found
+
+
 def normalize_endpoint(item: dict, now: datetime | None = None) -> dict:
     now = now or utcnow()
     epp = item.get("eppAgent") or {}
@@ -85,6 +136,7 @@ def normalize_endpoint(item: dict, now: datetime | None = None) -> dict:
         "agent_version": agent_version[:80],
         "sensor_version": sensor_version[:80],
         "component_version": component_version[:80],
+        "components": extract_components(item),
         "edr_status": str(edr.get("status") or ""),
         "last_connected": last_conn,
         "raw": item,
@@ -121,6 +173,42 @@ def mark_latest(endpoints: list[dict]) -> dict:
     return latest
 
 
+def _component_counts(endpoints: list[dict]) -> dict[str, dict[str, int]]:
+    out: dict[str, Counter] = {}
+    for e in endpoints:
+        for comp, ver in (e.get("components") or {}).items():
+            out.setdefault(comp, Counter())[ver] += 1
+    return {c: dict(sorted(v.items(), key=lambda kv: version_key(kv[0]), reverse=True)) for c, v in sorted(out.items())}
+
+
+def latest_components(summaries: list[dict]) -> dict[str, str]:
+    """Newest version of each pattern seen across all clients' latest snapshots."""
+    latest: dict[str, str] = {}
+    for s in summaries:
+        for comp, versions in (s.get("by_component") or {}).items():
+            for v in versions:
+                if comp not in latest or version_key(v) > version_key(latest[comp]):
+                    latest[comp] = v
+    return latest
+
+
+def components_behind(components: dict | None, latest: dict[str, str]) -> list[str]:
+    return sorted(c for c, v in (components or {}).items()
+                  if c in latest and version_key(v) < version_key(latest[c]))
+
+
+def pattern_status(summary: dict, latest: dict[str, str]) -> list[dict]:
+    """Per pattern: latest version, endpoints on it, endpoints behind."""
+    rows = []
+    for comp, versions in (summary.get("by_component") or {}).items():
+        lv = latest.get(comp)
+        current = sum(n for v, n in versions.items() if v == lv)
+        total = sum(versions.values())
+        rows.append({"name": comp, "latest": lv, "current": current, "behind": total - current, "total": total,
+                     "versions": versions})
+    return sorted(rows, key=lambda r: (-r["behind"], r["name"]))
+
+
 def summarize(endpoints: list[dict]) -> dict:
     prot = Counter(e["protection"] for e in endpoints)
     os_counter = Counter((e["os"].split(" ")[0] if e["os"] else "Unknown") for e in endpoints)
@@ -145,6 +233,7 @@ def summarize(endpoints: list[dict]) -> dict:
         "by_agent_version": {p: dict(sorted(c.items(), key=lambda kv: version_key(kv[0]), reverse=True))
                              for p, c in by_version.items()},
         "by_sensor_version": dict(sorted(sensor_versions.items(), key=lambda kv: version_key(kv[0]), reverse=True)[:15]),
+        "by_component": _component_counts(endpoints),
         "edr_enabled": sum(1 for e in endpoints if e["edr_status"].lower() in ("enabled", "on", "connected")),
         "by_protection": dict(prot),
         "by_os": dict(os_counter.most_common(8)),
