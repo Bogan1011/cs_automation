@@ -89,6 +89,17 @@ def main(argv=None):
     d.add_argument("--name", required=True)
     i = sub.add_parser("inspect", help="summarise the API fields across all endpoints (hides names/IPs)")
     i.add_argument("--name", required=True)
+    sw = sub.add_parser("set-swp", help="connect a client's Server & Workload Protection console API (exact patterns)")
+    sw.add_argument("--name", required=True)
+    sw.add_argument("--url", required=True, help="SWP API base, e.g. https://workload.in-1.cloudone.trendmicro.com")
+    ap = sub.add_parser("set-apex", help="connect a client's Apex One / SEP automation API (exact patterns)")
+    ap.add_argument("--name", required=True)
+    ap.add_argument("--url", required=True, help="e.g. https://xxxx.manage.trendmicro.com")
+    ap.add_argument("--app-id", required=True)
+    si = sub.add_parser("swp-inspect", help="summarise SWP computer fields (hides names/IPs)")
+    si.add_argument("--name", required=True)
+    pr = sub.add_parser("apex-probe", help="try Apex One API paths and summarise their fields")
+    pr.add_argument("--name", required=True)
     sub.add_parser("poll", help="run one collection for all clients now")
     args = p.parse_args(argv)
 
@@ -128,6 +139,37 @@ def main(argv=None):
             for c in s.scalars(select(Client).order_by(Client.name)):
                 state = "ok" if c.last_poll_ok else ("error: " + (c.last_error or "")[:80] if c.last_poll_ok is False else "never polled")
                 print(f"{c.name:30} {c.region:4} {'enabled' if c.enabled else 'disabled':9} {state}")
+        elif args.cmd == "set-swp":
+            c = get(args.name)
+            c.swp_url = args.url
+            c.swp_key_enc = crypto.encrypt(getpass.getpass("SWP API key (input hidden): ").strip())
+            s.commit()
+            print("SWP API saved")
+        elif args.cmd == "set-apex":
+            c = get(args.name)
+            c.apex_url, c.apex_app_id = args.url, args.app_id
+            c.apex_key_enc = crypto.encrypt(getpass.getpass("Apex One API key (input hidden): ").strip())
+            s.commit()
+            print("Apex One API saved")
+        elif args.cmd == "swp-inspect":
+            from .swp import SWPClient
+            c = get(args.name)
+            with SWPClient(c.swp_url, crypto.decrypt(c.swp_key_enc)) as swp:
+                comps = swp.list_computers()
+            print(inspect_fields(comps))
+        elif args.cmd == "apex-probe":
+            from .apexone import PROBE_PATHS, ApexClient
+            c = get(args.name)
+            with ApexClient(c.apex_url, c.apex_app_id, crypto.decrypt(c.apex_key_enc)) as apex:
+                for path in PROBE_PATHS:
+                    print(f"=== GET {path}")
+                    try:
+                        data = apex.request("GET", path)
+                        content = data.get("result_content", data) if isinstance(data, dict) else data
+                        items = content if isinstance(content, list) else [content]
+                        print(inspect_fields(items))
+                    except Exception as exc:
+                        print(f"  failed: {exc}")
         elif args.cmd == "inspect":
             c = get(args.name)
             with VisionOneClient(crypto.decrypt(c.api_key_enc), c.region) as v1:

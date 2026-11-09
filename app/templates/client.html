@@ -14,6 +14,7 @@
   {% if client.last_poll_ok == False %}<span class="err">· failed: {{ client.last_error }}</span>{% endif %}
   {% if not graph_configured %}· <span class="warn">Outlook isn't set up yet, so the Report button falls back to a PDF download.</span>{% endif %}
   {% if report_to %}· Draft recipients: {{ report_to }}{% endif %}
+  {% for k, err in ((client.summary or {}).connector_errors or {}).items() %}<br><span class="err">{{ 'Server & Workload' if k == 'swp' else 'Apex One' }} API for exact patterns failed: {{ err }}</span>{% endfor %}
   {% if client.summary and client.summary.unmanaged %}· {{ client.summary.unmanaged }} unmanaged endpoints not counted{% endif %}
 </p>
 

@@ -180,3 +180,61 @@ def test_drilldown_lists_and_csv():
         assert "BL-LAP-002" in allp.text and "Bandhan Life" in allp.text
         csv = http.get(f"/endpoints.csv?client={cid}&protection=SWP").text
         assert csv.count("\n") == 1 + 3 and "BL-SRV-DB01" in csv
+
+
+def test_swp_client_paginates_and_falls_back_to_legacy_header(monkeypatch):
+    from app import swp
+    monkeypatch.setattr(swp, "PAGE", 2)
+    seen = []
+
+    def handler(req):
+        if "Authorization" in req.headers:
+            return httpx.Response(401)
+        assert req.headers["api-secret-key"] == "k" and req.headers["api-version"] == "v1"
+        body = json.loads(req.content)
+        last = body["searchCriteria"][0]["idValue"]
+        seen.append(last)
+        comps = [{"ID": i, "hostName": f"srv{i}.corp.local",
+                  "securityUpdates": {"antiMalware": [{"name": "Virus Pattern", "version": "21.431.00"}]}}
+                 for i in range(last + 1, min(last + 3, 4))]
+        return httpx.Response(200, json={"computers": comps})
+
+    with swp.SWPClient("https://workload.example", "k", transport=httpx.MockTransport(handler)) as c:
+        comps = c.list_computers()
+    assert [x["ID"] for x in comps] == [1, 2, 3] and seen == [0, 2]
+    assert collector.extract_components(comps[0]["securityUpdates"]) == {"Virus Pattern": "21.431.00"}
+    assert swp.computer_key(comps[0]) == ["srv1.corp.local", "srv1"]
+
+
+def test_apex_jwt_is_valid_hs256():
+    import base64, hashlib, hmac as h
+    from app.apexone import make_jwt
+    tok = make_jwt("APPID", "secret", "get", "/WebApp/API/AgentResource/ProductAgents?host_name=X")
+    head, payload, sig = tok.split(".")
+    pad = lambda s: s + "=" * (-len(s) % 4)
+    claims = json.loads(base64.urlsafe_b64decode(pad(payload)))
+    assert claims["appid"] == "APPID" and claims["version"] == "V1"
+    expected = base64.b64encode(hashlib.sha256(
+        b"GET|/webapp/api/agentresource/productagents?host_name=x||").digest()).decode()
+    assert claims["checksum"] == expected
+    good = base64.urlsafe_b64encode(h.new(b"secret", f"{head}.{payload}".encode(), hashlib.sha256).digest()).rstrip(b"=").decode()
+    assert sig == good
+
+
+def test_exact_patterns_from_console_api_are_merged(monkeypatch):
+    from app import reports
+    cid = make_client()
+    with SessionLocal() as s:
+        c = s.get(Client, cid)
+        c.swp_url = "https://x"
+        s.commit()
+    monkeypatch.setattr(collector, "fetch_swp_components", lambda client: {
+        "bl-srv-db01": {"Smart Scan Agent Pattern": "21.431.00"},
+        "bl-srv-web01": {"Smart Scan Agent Pattern": "21.421.00"}})
+    collect(cid)
+    with SessionLocal() as s:
+        latest = reports.global_latest(s)
+        assert latest["Smart Scan Agent Pattern"] == "21.431.00"
+        rows = collector.pattern_status(reports.latest_summary(s, cid).summary, latest)
+        ssa = next(r for r in rows if r["name"] == "Smart Scan Agent Pattern")
+        assert (ssa["current"], ssa["behind"]) == (1, 1)

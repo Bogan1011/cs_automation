@@ -287,8 +287,27 @@ def collect_client(session, client: Client, v1: VisionOneClient | None = None) -
         if own:
             v1.close()
 
+    connector_errors = {}
+    exact = {}
+    try:
+        exact.update(fetch_swp_components(client))
+    except Exception as exc:  # optional source; never fail the poll
+        connector_errors["swp"] = str(exc)[:300]
+        log.warning("%s: SWP patterns unavailable: %s", client.name, exc)
+    try:
+        exact.update(fetch_apex_components(client))
+    except Exception as exc:
+        connector_errors["apex"] = str(exc)[:300]
+        log.warning("%s: Apex One patterns unavailable: %s", client.name, exc)
+
     now = utcnow()
     rows = [normalize_endpoint(i, now) for i in raw_endpoints]
+    if exact:
+        for r in rows:
+            name = r["name"].strip().lower()
+            comps = exact.get(name) or exact.get(name.split(".")[0])
+            if comps:
+                r["components"] = {**(r.get("components") or {}), **comps}
     # de-duplicate by guid
     rows = list({r["agent_guid"]: r for r in rows}.values())
     # Only "All managed endpoints" (SEP + SWP + Sensor only) count, as in the console.
@@ -296,12 +315,43 @@ def collect_client(session, client: Client, v1: VisionOneClient | None = None) -
     rows = [r for r in rows if r["protection"] != "Unmanaged"]
     summary = summarize(rows)
     summary["unmanaged"] = unmanaged
+    summary["connector_errors"] = connector_errors
+    summary["exact_patterns_from"] = sorted(k for k in ("swp", "apex") if getattr(client, f"{k}_url", "") and k not in connector_errors)
 
     session.execute(delete(Endpoint).where(Endpoint.client_id == client.id))
     session.add_all(Endpoint(client_id=client.id, **r) for r in rows)
     session.add(Snapshot(client_id=client.id, taken_at=now, summary=summary))
     client.last_poll_at, client.last_poll_ok, client.last_error = now, True, None
     return summary
+
+
+def fetch_swp_components(client: Client) -> dict[str, dict[str, str]]:
+    """{lowercase host name: {component: version}} from the SWP console API, if configured."""
+    if not (client.swp_url and client.swp_key_enc):
+        return {}
+    from .swp import SWPClient, computer_key
+    out = {}
+    with SWPClient(client.swp_url, crypto.decrypt(client.swp_key_enc)) as swp:
+        for comp in swp.list_computers():
+            versions = extract_components(comp.get("securityUpdates") or {})
+            for k in computer_key(comp):
+                out[k] = versions
+    return out
+
+
+def fetch_apex_components(client: Client) -> dict[str, dict[str, str]]:
+    if not (client.apex_url and client.apex_app_id and client.apex_key_enc):
+        return {}
+    from .apexone import ApexClient
+    out = {}
+    with ApexClient(client.apex_url, client.apex_app_id, crypto.decrypt(client.apex_key_enc)) as apex:
+        for agent in apex.product_agents():
+            versions = extract_components(agent)
+            host = str(agent.get("host_name") or agent.get("hostName") or "").strip().lower()
+            if host and versions:
+                out[host] = versions
+                out[host.split(".")[0]] = versions
+    return out
 
 
 def collect_all() -> None:

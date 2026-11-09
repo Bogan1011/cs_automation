@@ -50,6 +50,22 @@ Open `http://127.0.0.1:8000` on the server. To reach it from other machines on t
 
 Other commands: `list-clients`, `edit-client --name X --region sg --report-to a@b.com --enabled no`, `set-key --name X` (rotate key), and `dump --name X` (prints one raw endpoint record, which is useful for checking field names).
 
+## Exact pattern versions (optional)
+
+The Vision One API gives Trend's per-endpoint verdict (latest or outdated) but not the version numbers themselves. For exact versions, also connect each product console's own API:
+
+```bash
+# Server & Workload Protection: create a read-only API key in the SWP console (Administration > User Management > API Keys)
+docker compose exec app python -m app.cli set-swp --name "Bandhan Life" --url https://workload.<region>.cloudone.trendmicro.com
+docker compose exec app python -m app.cli swp-inspect --name "Bandhan Life"     # check the fields it returns
+
+# Standard Endpoint Protection (Apex One as a Service): add an application under Automation API Access Settings
+docker compose exec app python -m app.cli set-apex --name "Bandhan Life" --url https://<tenant>.manage.trendmicro.com --app-id <Application ID>
+docker compose exec app python -m app.cli apex-probe --name "Bandhan Life"
+```
+
+Once these are connected, the next poll matches computers to endpoints by host name and fills in the Patterns table with exact versions. The latest version of each pattern is the newest one found across all clients.
+
 ## 3. Outlook drafts (Microsoft 365)
 
 1. In **Microsoft Entra admin centre → App registrations → New registration**, create an app named `Vision One Dashboard` with single tenant.

@@ -22,6 +22,12 @@ class Client(Base):
     region: Mapped[str] = mapped_column(String(10))
     api_key_enc: Mapped[str] = mapped_column(Text)
     report_to: Mapped[str] = mapped_column(String(500), default="")  # comma-separated recipients for the draft
+    # Optional product-console APIs for exact pattern versions
+    swp_url: Mapped[str] = mapped_column(String(300), default="")
+    swp_key_enc: Mapped[str] = mapped_column(Text, default="")
+    apex_url: Mapped[str] = mapped_column(String(300), default="")
+    apex_app_id: Mapped[str] = mapped_column(String(200), default="")
+    apex_key_enc: Mapped[str] = mapped_column(Text, default="")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     last_poll_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_poll_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
