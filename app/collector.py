@@ -17,9 +17,11 @@ def _parse_dt(value) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except ValueError:
         return None
+    # Vision One sometimes returns timestamps without an offset; they are UTC.
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
 def classify_protection(item: dict) -> str:

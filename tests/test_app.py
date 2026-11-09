@@ -138,3 +138,11 @@ def test_web_requires_login_and_renders():
         assert http.get(f"/clients/{cid}/report.pdf").content.startswith(b"%PDF")
         r = http.post(f"/api/clients/{cid}/report")
         assert r.status_code == 400 and r.json()["download"]  # Outlook not configured -> PDF fallback
+
+
+def test_naive_timestamps_are_treated_as_utc():
+    from tests.fixtures import endpoint
+    item = endpoint("n1", "NAIVE", "Standard Endpoint Protection")
+    item["eppAgent"]["lastConnectedDateTime"] = "2026-11-01T10:00:00"
+    row = collector.normalize_endpoint(item)
+    assert row["last_connected"].tzinfo is not None and row["stale"] is True
