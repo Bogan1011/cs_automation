@@ -46,7 +46,7 @@ docker compose exec app python -m app.cli test --name "Bandhan Life"     # check
 docker compose exec app python -m app.cli poll                           # first pull right away
 ```
 
-Open `http://127.0.0.1:8000` on the server. For access from other machines on the LAN, either change the port mapping in `docker-compose.yml` to `"8000:8000"` or, preferably, put Nginx or Caddy with HTTPS in front of it.
+Open `http://127.0.0.1:8000` on the server. To reach it from other machines on the LAN, set `BIND_ADDR` in `.env` to the server's LAN IP, for example `192.168.1.67`, then run `docker compose up -d`. For anything beyond a trusted LAN, put Nginx or Caddy with HTTPS in front.
 
 Other commands: `list-clients`, `edit-client --name X --region sg --report-to a@b.com --enabled no`, `set-key --name X` (rotate key), and `dump --name X` (prints one raw endpoint record, which is useful for checking field names).
 

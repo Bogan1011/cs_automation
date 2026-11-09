@@ -21,8 +21,8 @@ services:
       db:
         condition: service_healthy
     ports:
-      # Bound to localhost only. Put Nginx/Caddy with HTTPS in front, or change to "8000:8000" for LAN access.
-      - "127.0.0.1:8000:8000"
+      # Localhost only by default. Set BIND_ADDR in .env (e.g. the server LAN IP) to open it to your network.
+      - "${BIND_ADDR:-127.0.0.1}:8000:8000"
 
 volumes:
   pgdata:
