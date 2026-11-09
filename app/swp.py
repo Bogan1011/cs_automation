@@ -32,8 +32,9 @@ class SWPClient:
         for attempt in range(2):
             headers = {"api-version": "v1", "Content-Type": "application/json", **self._auth}
             r = self._http.request(method, url, headers=headers, **kw)
-            if r.status_code in (401, 403) and attempt == 0 and "Authorization" in self._auth:
-                # Older/legacy keys use the api-secret-key header instead.
+            if r.status_code >= 400 and attempt == 0 and "Authorization" in self._auth:
+                # Legacy-style keys use the api-secret-key header; the ApiKey header can answer 401/403
+                # or even 500 for them (seen on Bandhan's SWP tenant).
                 self._auth = {"api-secret-key": self._key}
                 continue
             if r.status_code >= 400:

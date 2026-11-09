@@ -189,7 +189,7 @@ def test_swp_client_paginates_and_falls_back_to_legacy_header(monkeypatch):
 
     def handler(req):
         if "Authorization" in req.headers:
-            return httpx.Response(401)
+            return httpx.Response(500)  # what Bandhan's tenant returned for the ApiKey header
         assert req.headers["api-secret-key"] == "k" and req.headers["api-version"] == "v1"
         body = json.loads(req.content)
         last = body["searchCriteria"][0]["idValue"]
