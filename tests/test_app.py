@@ -265,15 +265,16 @@ def test_swp_versions_real_shape():
     assert v["_outdated"] == ["Anti-Malware Engine (Windows 64-bit)"]
 
 
-def test_home_opens_first_client_tab_and_inventory_counts():
+def test_home_page_and_inventory_counts():
     from app import collector
     from app.db import Endpoint
     a = make_client()
     collect(a)
     with TestClient(app) as http:
         http.post("/login", data={"username": "admin", "password": "pw"})
-        r = http.get("/", follow_redirects=False)
-        assert r.status_code == 303 and r.headers["location"] == f"/clients/{a}"
+        home = http.get("/")
+        assert home.status_code == 200 and "Widgets" in home.text and f'href="/clients/{a}"' in home.text
+        assert ">Home</a>" in http.get(f"/clients/{a}").text  # header nav on client pages
     with SessionLocal() as s:
         eps = s.scalars(select(Endpoint).where(Endpoint.client_id == a)).all()
         inv = collector.inventory(eps, {"unmanaged": 4})

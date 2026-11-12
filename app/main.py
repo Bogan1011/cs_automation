@@ -21,6 +21,16 @@ from .db import Client, Endpoint, SessionLocal, Snapshot, init_db
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 BASE = Path(__file__).parent
 templates = Jinja2Templates(directory=BASE / "templates")
+
+
+def nav_clients():
+    """Client tabs shown in the header on every page."""
+    with SessionLocal() as s:
+        return [{"id": c.id, "name": c.name, "ok": c.last_poll_ok}
+                for c in s.scalars(select(Client).where(Client.enabled.is_(True)).order_by(Client.name))]
+
+
+templates.env.globals["nav_clients"] = nav_clients
 scheduler = BackgroundScheduler(timezone="UTC")
 _poll_lock = threading.Lock()
 
@@ -101,13 +111,16 @@ def _client_card(session, c: Client, latest: dict | None = None) -> dict:
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    """Each client is managed on its own, so the home page opens the first client's tab."""
+    """Home: a short status card per client. Kept separate from the client tabs so widgets can be added later."""
     require_login(request)
     with SessionLocal() as s:
-        first = s.scalars(select(Client).where(Client.enabled.is_(True)).order_by(Client.name)).first()
-    if first:
-        return RedirectResponse(f"/clients/{first.id}", status_code=303)
-    return templates.TemplateResponse(request, "index.html", {"poll_interval": settings.poll_interval})
+        cards = []
+        for c in s.scalars(select(Client).where(Client.enabled.is_(True)).order_by(Client.name)):
+            card = _client_card(s, c)
+            eps = s.scalars(select(Endpoint).where(Endpoint.client_id == c.id)).all()
+            card["inv"] = collector.inventory(eps, card["summary"])
+            cards.append(card)
+    return templates.TemplateResponse(request, "index.html", {"cards": cards})
 
 
 @app.get("/api/overview")
@@ -129,10 +142,8 @@ def client_page(request: Request, client_id: int):
         history = s.scalars(select(Snapshot).where(Snapshot.client_id == c.id)
                             .order_by(Snapshot.taken_at.desc()).limit(288)).all()
         card = _client_card(s, c, latest)
-        tabs = s.scalars(select(Client).where(Client.enabled.is_(True)).order_by(Client.name)).all()
         return templates.TemplateResponse(request, "client.html", {
             "client": card, "endpoints": endpoints,
-            "tabs": [{"id": t.id, "name": t.name, "ok": t.last_poll_ok} for t in tabs],
             "inv": collector.inventory(endpoints, card["summary"]),
             "flags": {e.id: collector.inventory_flags(e) for e in endpoints},
             "patterns": collector.pattern_status(card["summary"] or {}, latest),

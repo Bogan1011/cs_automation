@@ -120,28 +120,75 @@ function startOverview(pollSeconds) {
 }
 
 function startClient(clientId) {
-  const rows = [...document.querySelectorAll('#eps tbody tr[data-p]')];
-  const search = document.getElementById('search'), none = document.getElementById('none');
-  const title = document.getElementById('viewtitle'), shown = document.getElementById('shown'), csv = document.getElementById('csv');
+  const tbody = document.querySelector('#eps tbody');
+  let rows = [...tbody.querySelectorAll('tr[data-p]')];
+  const $ = id => document.getElementById(id);
+  const search = $('search'), none = $('none'), title = $('viewtitle'), shown = $('shown'), csv = $('csv');
   const PROT = ['SEP', 'SWP', 'Sensor only'];
-  let view = 'all';
-  const match = r => view === 'all' || (PROT.includes(view) ? r.dataset.p === view : r.dataset.f.split(' ').includes(view));
-  function filter() {
-    const q = search.value.toLowerCase(); let n = 0;
-    rows.forEach(r => { const show = match(r) && (!q || r.textContent.toLowerCase().includes(q)); r.hidden = !show; n += show; });
-    shown.textContent = n.toLocaleString(); if (none) none.hidden = n > 0 || !rows.length;
+  let view = 'all', st = '', page = 0, size = 50, sortKey = '', sortDir = 1;
+  const pref = (() => { try { return JSON.parse(localStorage.getItem('eps-pref') || '{}'); } catch (e) { return {}; } })();
+  if (pref.size != null) { size = pref.size; $('size').value = String(size); }
+  const save = () => { try { localStorage.setItem('eps-pref', JSON.stringify({size})); } catch (e) {} };
+  const inView = r => view === 'all' || (PROT.includes(view) ? r.dataset.p === view : r.dataset.f.split(' ').includes(view));
+  const vkey = v => v.split(/[.\-]/).map(x => x.padStart(8, '0')).join('.');
+
+  function render(resetPage) {
+    if (resetPage) page = 0;
+    const q = search.value.trim().toLowerCase();
+    const match = rows.filter(r => inView(r) && (!st || r.dataset.st === st || (st === 'off' && r.dataset.st === 'stale')) && (!q || r.textContent.toLowerCase().includes(q)));
+    const pages = size ? Math.max(1, Math.ceil(match.length / size)) : 1;
+    page = Math.min(page, pages - 1);
+    const from = size ? page * size : 0, to = size ? from + size : match.length;
+    const visible = new Set(match.slice(from, to));
+    rows.forEach(r => { r.hidden = !visible.has(r); });
+    shown.textContent = match.length.toLocaleString();
+    none.hidden = match.length > 0 || !rows.length;
+    $('range').textContent = match.length ? `${(from + 1).toLocaleString()}–${Math.min(to, match.length).toLocaleString()} of ${match.length.toLocaleString()}` : '';
+    $('pageno').textContent = `Page ${page + 1} of ${pages}`;
+    $('prev').disabled = page === 0; $('next').disabled = page >= pages - 1;
   }
-  search.addEventListener('input', filter);
+  function sortBy(k) {
+    sortDir = sortKey === k ? -sortDir : (k === 'seen' || k === 'comp' ? -1 : 1); sortKey = k;
+    const num = k === 'seen' || k === 'comp';
+    rows.sort((a, b) => {
+      let x = a.dataset[k] || '', y = b.dataset[k] || '';
+      if (num) return (Number(x) - Number(y)) * sortDir;
+      if (k === 'agent' || k === 'sensor') { x = vkey(x); y = vkey(y); }
+      return x.localeCompare(y, undefined, {numeric: true}) * sortDir;
+    });
+    rows.forEach(r => tbody.insertBefore(r, none));
+    document.querySelectorAll('#eps th.sort').forEach(th => th.dataset.dir = th.dataset.k === k ? (sortDir > 0 ? 'asc' : 'desc') : '');
+    render(true);
+  }
+  document.querySelectorAll('#eps th.sort').forEach(th => th.addEventListener('click', () => sortBy(th.dataset.k)));
+  let t; search.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => render(true), 120); });
+  addEventListener('keydown', e => { if (e.key === '/' && document.activeElement !== search) { e.preventDefault(); search.focus(); } });
+  $('size').addEventListener('change', e => { size = Number(e.target.value); save(); render(true); });
+  const top = () => document.querySelector('.inv-main').scrollIntoView({behavior: reduceMotion ? 'auto' : 'smooth', block: 'start'});
+  $('prev').addEventListener('click', () => { page--; render(); top(); });
+  $('next').addEventListener('click', () => { page++; render(); top(); });
+
+  // iOS-style segmented control with sliding thumb (status filter)
+  const seg = $('st'), thumb = document.createElement('span');
+  thumb.className = 'thumb'; seg.prepend(thumb);
+  const moveThumb = b => { thumb.style.left = b.offsetLeft + 'px'; thumb.style.width = b.offsetWidth + 'px'; };
+  seg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    seg.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on'); moveThumb(b); st = b.dataset.s; render(true);
+  }));
+  requestAnimationFrame(() => moveThumb(seg.querySelector('button.on')));
+  addEventListener('resize', () => moveThumb(seg.querySelector('button.on')));
+
   document.querySelectorAll('.inv-row[data-k]').forEach(b => b.addEventListener('click', () => {
     document.querySelectorAll('.inv-row.on').forEach(x => x.classList.remove('on'));
     b.classList.add('on'); view = b.dataset.k; title.textContent = b.dataset.label;
     const p = new URLSearchParams({client: clientId});
     if (PROT.includes(view)) p.set('protection', view); else if (view !== 'all') p.set('filter', view);
-    csv.href = '/endpoints.csv?' + p; filter();
-    if (innerWidth < 900) document.querySelector('.inv-main').scrollIntoView({behavior: 'smooth'});
+    csv.href = '/endpoints.csv?' + p; render(true);
+    if (innerWidth < 900) top();
   }));
-  // keep the active tab in view when there are many clients
   document.querySelector('#tabs a.on')?.scrollIntoView({inline: 'center', block: 'nearest'});
+  render(true);
 
   document.getElementById('refresh').addEventListener('click', async e => {
     const b = e.currentTarget; busy(b, 'Refreshing…');
