@@ -127,7 +127,7 @@ def client_page(request: Request, client_id: int):
         return templates.TemplateResponse(request, "client.html", {
             "client": card, "endpoints": endpoints,
             "patterns": collector.pattern_status(card["summary"] or {}, latest),
-            "behind": {e.id: collector.components_behind(e.components, latest) for e in endpoints},
+            "behind": {e.id: collector.components_behind(e.components, latest.get(e.protection, {})) for e in endpoints},
             "history": [{"t": h.taken_at.isoformat(), "total": h.summary.get("total", 0),
                          "online": h.summary.get("online", 0)} for h in reversed(history)],
             "graph_configured": settings.graph_configured, "report_to": c.report_to,
@@ -229,10 +229,12 @@ def _filtered(s, client_id: int | None, protection: str, flt: str, agent_status:
     pred = FILTERS.get(flt, FILTERS["all"])[1]
     if component:
         latest = reports.global_latest(s)
+        def behind(e):
+            return collector.components_behind(e.components, latest.get(e.protection, {}))
         if flt == "component_current":
-            pred = lambda e: component in (e.components or {}) and component not in collector.components_behind(e.components, latest)
+            pred = lambda e: component in (e.components or {}) and component not in behind(e)
         else:
-            pred = lambda e: component in collector.components_behind(e.components, latest)
+            pred = lambda e: component in behind(e)
     rows = [(e, cname) for e, cname in s.execute(stmt.order_by(Client.name, Endpoint.name)).all() if pred(e)]
     return rows
 

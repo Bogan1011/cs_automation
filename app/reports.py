@@ -36,16 +36,16 @@ def latest_summary(session, client_id: int) -> Snapshot | None:
                            .order_by(Snapshot.taken_at.desc()).limit(1)).first()
 
 
-def global_latest(session) -> dict[str, str]:
-    """Latest version of every pattern found across all enabled clients."""
+def global_latest(session) -> dict[str, dict[str, str]]:
+    """{protection: {pattern: newest version found across all enabled clients}}."""
     clients = session.scalars(select(Client).where(Client.enabled.is_(True))).all()
     snaps = [latest_summary(session, c.id) for c in clients]
     return latest_components([sn.summary for sn in snaps if sn])
 
 
-def endpoints_with_old_patterns(session, client_id: int, latest: dict[str, str]) -> int:
-    comps = session.scalars(select(Endpoint.components).where(Endpoint.client_id == client_id)).all()
-    return sum(1 for c in comps if components_behind(c, latest))
+def endpoints_with_old_patterns(session, client_id: int, latest: dict[str, dict[str, str]]) -> int:
+    rows = session.execute(select(Endpoint.components, Endpoint.protection).where(Endpoint.client_id == client_id)).all()
+    return sum(1 for c, p in rows if components_behind(c, latest.get(p, {})))
 
 
 def build_report(session, client: Client) -> tuple[bytes, dict]:
@@ -112,12 +112,11 @@ def build_report(session, client: Client) -> tuple[bytes, dict]:
                   "osNotSupported": "OS not supported", "unknownVersions": "Unknown"}
         story += [Spacer(1, 8), Paragraph("Agent version status", styles["Heading2"])]
         story.append(_table([["Status", "Endpoints"]] + [[labels.get(k, k), str(v)] for k, v in avs.items()], [75 * mm, 30 * mm]))
-    pstatus = pattern_status(s, latest_all)
-    if pstatus:
-        story += [Spacer(1, 8), Paragraph("Patterns and engines", styles["Heading2"]),
+    for prot, prows in pattern_status(s, latest_all).items():
+        story += [Spacer(1, 8), Paragraph(f"Exact pattern & engine versions: {_PROT.get(prot, prot)}", styles["Heading2"]),
                   Paragraph("Latest = newest version found across all managed clients.", styles["Italic"])]
         prow = [["Component", "Latest version", "On latest", "Behind"]]
-        for r in pstatus:
+        for r in prows:
             prow.append([r["name"][:45], r["latest"] or "-", str(r["current"]), str(r["behind"])])
         story.append(_table(prow, [75 * mm, 40 * mm, 25 * mm, 25 * mm]))
 
@@ -126,13 +125,13 @@ def build_report(session, client: Client) -> tuple[bytes, dict]:
         story.append(_table([["OS", "Endpoints"]] + [[k, str(v)] for k, v in s["by_os"].items()], [90 * mm, 30 * mm]))
 
     attention = [e for e in endpoints if e.stale or not e.online or e.behind_latest
-                 or components_behind(e.components, latest_all)
+                 or components_behind(e.components, latest_all.get(e.protection, {}))
                  or is_outdated({"update_status": e.update_status, "component_version": e.component_version})]
     story += [Spacer(1, 8), Paragraph(f"Endpoints needing attention ({len(attention)})", styles["Heading2"])]
     if attention:
         arows = [["Endpoint", "Protection", "Status", "Last connected", "Agent version", "Patterns behind"]]
         for e in attention[:200]:
-            behind = components_behind(e.components, latest_all)
+            behind = components_behind(e.components, latest_all.get(e.protection, {}))
             arows.append([e.name[:36], e.protection, ("stale" if e.stale else e.agent_status or "offline"),
                           e.last_connected.strftime("%d %b %Y %H:%M") if e.last_connected else "-",
                           (e.agent_version or "-") + (" (old)" if e.behind_latest else ""),

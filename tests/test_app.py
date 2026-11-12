@@ -13,9 +13,22 @@ from app.visionone import VisionOneClient, VisionOneError
 from tests.fixtures import ENDPOINTS
 
 
+DETAIL_CALLS = []
+
+
 def v1_transport():
+    by_guid = {e["agentGuid"]: e for e in ENDPOINTS}
+
     def handler(req: httpx.Request):
         assert req.headers["Authorization"] == "Bearer secret-key"
+        if req.url.path.startswith("/v3.0/endpointSecurity/endpoints/"):
+            guid = req.url.path.rsplit("/", 1)[-1]
+            DETAIL_CALLS.append(guid)
+            e = by_guid[guid]
+            comps = (e.get("eppAgent") or {}).get("components") or []
+            return httpx.Response(200, json={"agentGuid": guid, "eppAgent": {
+                "patterns": [{"id": "1", "name": c["name"], "version": c["version"]} for c in comps],
+                "engines": [{"id": "9", "name": "Virus Scan Engine (64-bit)", "version": "26.550.1003"}]}})
         if req.url.path == "/v3.0/endpointSecurity/endpoints":
             if "skip" in req.url.params:
                 return httpx.Response(200, json={"items": ENDPOINTS[3:]})
@@ -147,21 +160,6 @@ def test_naive_timestamps_are_treated_as_utc():
     assert row["last_connected"].tzinfo is not None and row["stale"] is True
 
 
-def test_patterns_latest_across_clients_and_behind_counts():
-    from app import reports
-    a = make_client("Bandhan Life")
-    b = make_client("Clix Capital", "sg")
-    collect(a)
-    collect(b)
-    with SessionLocal() as s:
-        latest = reports.global_latest(s)
-        assert latest == {"Virus Pattern": "19.123.00", "Digital Signature Pattern": "1.987.00"}
-        assert reports.endpoints_with_old_patterns(s, a, latest) == 1  # BL-LAP-APEX on 19.121.00
-        rows = collector.pattern_status(reports.latest_summary(s, a).summary, latest)
-        virus = next(r for r in rows if r["name"] == "Virus Pattern")
-        assert (virus["current"], virus["behind"]) == (5, 1)
-
-
 def test_extract_components_flat_keys():
     comps = collector.extract_components({"eppAgent": {"version": "14.0.1.1", "spywarePatternVersion": "2.871.00"},
                                           "edrSensor": {"version": "1.2.3.4"}})
@@ -221,44 +219,46 @@ def test_apex_jwt_is_valid_hs256():
     assert sig == good
 
 
-def test_exact_patterns_from_console_api_are_merged(monkeypatch):
+def test_exact_versions_from_endpoint_detail_per_protection_and_cached():
     from app import reports
-    cid = make_client()
-    with SessionLocal() as s:
-        c = s.get(Client, cid)
-        c.swp_url = "https://x"
-        s.commit()
-    monkeypatch.setattr(collector, "fetch_swp_components", lambda client: {
-        "bl-srv-db01": {"Smart Scan Agent Pattern": "21.431.00"},
-        "bl-srv-web01": {"Smart Scan Agent Pattern": "21.421.00"}})
-    collect(cid)
+    a = make_client("Bandhan Life")
+    b = make_client("Clix Capital", "sg")
+    DETAIL_CALLS.clear()
+    collect(a)
+    assert len(DETAIL_CALLS) == 6  # SEP 3 + SWP 3; sensor-only and unmanaged are skipped
+    collect(a)
+    assert len(DETAIL_CALLS) == 6  # cached for DETAIL_TTL_MINUTES, not re-fetched every poll
+    collect(b)
     with SessionLocal() as s:
         latest = reports.global_latest(s)
-        assert latest["Smart Scan Agent Pattern"] == "21.431.00"
-        rows = collector.pattern_status(reports.latest_summary(s, cid).summary, latest)
-        ssa = next(r for r in rows if r["name"] == "Smart Scan Agent Pattern")
-        assert (ssa["current"], ssa["behind"]) == (1, 1)
-
-
-def test_swp_versions_real_shape_and_drilldown(monkeypatch):
-    from app import reports
-    comp = {"hostName": "BL-SRV-DB01", "securityUpdates": {
-        "antiMalware": [
-            {"name": "Virus Pattern", "version": "21.435.00", "platform": "All Platforms", "latest": True},
-            {"name": "Anti-Malware Engine", "version": "26.530.1002", "platform": "Windows 64-bit", "latest": False},
-        ],
-        "updateStatus": {"status": "warning", "statusMessage": "Out-of-Date"}, "lastChanged": 1}}
-    v = collector.swp_versions(comp)
-    assert v == {"Virus Pattern": "21.435.00", "Anti-Malware Engine (Windows 64-bit)": "26.530.1002",
-                 "_outdated": ["Anti-Malware Engine (Windows 64-bit)"]}
-    assert collector.components_behind(v, {"Virus Pattern": "21.435.00"}) == ["Anti-Malware Engine (Windows 64-bit)"]
-
-    cid = make_client()
-    monkeypatch.setattr(collector, "fetch_swp_components", lambda client: {"bl-srv-db01": v})
-    collect(cid)
+        assert latest["SEP"]["Virus Pattern"] == "19.123.00"
+        assert latest["SWP"]["Virus Scan Engine (64-bit)"] == "26.550.1003"
+        assert reports.endpoints_with_old_patterns(s, a, latest) == 1  # BL-LAP-APEX on 19.121.00
+        st = collector.pattern_status(reports.latest_summary(s, a).summary, latest)
+        virus = next(r for r in st["SEP"] if r["name"] == "Virus Pattern")
+        assert (virus["current"], virus["behind"]) == (2, 1)
     with TestClient(app) as http:
         http.post("/login", data={"username": "admin", "password": "pw"})
-        page = http.get(f"/endpoints?client={cid}&component=Anti-Malware+Engine+(Windows+64-bit)&filter=component_behind")
-        assert "BL-SRV-DB01" in page.text and "<b>1</b> endpoints" in page.text
-        cp = http.get(f"/clients/{cid}")
-        assert "Exact pattern versions" in cp.text and "<td>_outdated" not in cp.text
+        page = http.get(f"/endpoints?client={a}&protection=SEP&component=Virus+Pattern&filter=component_behind")
+        assert "BL-LAP-APEX" in page.text and "<b>1</b> endpoints" in page.text
+        cp = http.get(f"/clients/{a}")
+        assert "Exact pattern &amp; engine versions" in cp.text and "19.123.00" in cp.text
+        ov = http.get("/api/overview").json()
+        assert ov["latest_patterns"]["SEP"]["Virus Pattern"] == "19.123.00"
+        assert http.get(f"/clients/{a}/report.pdf").content.startswith(b"%PDF")
+
+
+def test_same_pattern_name_different_version_lines_do_not_mix():
+    latest = collector.latest_components([{"by_component": {
+        "SEP": {"Damage Recovery Pattern": {"17002": 5}},
+        "SWP": {"Damage Recovery Pattern": {"1.7.2": 3}}}}])
+    assert latest == {"SEP": {"Damage Recovery Pattern": "17002"}, "SWP": {"Damage Recovery Pattern": "1.7.2"}}
+    assert collector.components_behind({"Damage Recovery Pattern": "1.7.2"}, latest["SWP"]) == []
+
+
+def test_swp_versions_real_shape():
+    comp = {"securityUpdates": {"antiMalware": [
+        {"name": "Virus Pattern", "version": "21.435.00", "platform": "All Platforms", "latest": True},
+        {"name": "Anti-Malware Engine", "version": "26.530.1002", "platform": "Windows 64-bit", "latest": False}]}}
+    v = collector.swp_versions(comp)
+    assert v["_outdated"] == ["Anti-Malware Engine (Windows 64-bit)"]

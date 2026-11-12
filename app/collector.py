@@ -8,7 +8,7 @@ from sqlalchemy import delete, select
 
 from . import crypto
 from .config import settings
-from .db import Client, Endpoint, SessionLocal, Snapshot, utcnow
+from .db import Client, Endpoint, EndpointDetail, SessionLocal, Snapshot, utcnow
 from .visionone import VisionOneClient
 
 log = logging.getLogger("collector")
@@ -202,45 +202,76 @@ def mark_latest(endpoints: list[dict]) -> dict:
     return latest
 
 
-def _component_counts(endpoints: list[dict]) -> dict[str, dict[str, int]]:
-    out: dict[str, Counter] = {}
+def _component_counts(endpoints: list[dict]) -> dict[str, dict[str, dict[str, int]]]:
+    """{protection: {component: {version: count}}}. SEP and SWP are kept apart because the same
+    pattern name can use a different version line on each (e.g. Damage Recovery Pattern 17002 vs 1.7.2)."""
+    out: dict[str, dict[str, Counter]] = {}
     for e in endpoints:
         for comp, ver in (e.get("components") or {}).items():
             if comp.startswith("_"):
                 continue
-            out.setdefault(comp, Counter())[ver] += 1
-    return {c: dict(sorted(v.items(), key=lambda kv: version_key(kv[0]), reverse=True)) for c, v in sorted(out.items())}
+            out.setdefault(e["protection"], {}).setdefault(comp, Counter())[str(ver)] += 1
+    return {p: {c: dict(sorted(v.items(), key=lambda kv: version_key(kv[0]), reverse=True)) for c, v in sorted(comps.items())}
+            for p, comps in out.items()}
 
 
-def latest_components(summaries: list[dict]) -> dict[str, str]:
-    """Newest version of each pattern seen across all clients' latest snapshots."""
-    latest: dict[str, str] = {}
+def _is_new_format(by_component: dict) -> bool:
+    return all(isinstance(v, dict) and all(isinstance(x, dict) for x in v.values()) for v in by_component.values())
+
+
+def latest_components(summaries: list[dict]) -> dict[str, dict[str, str]]:
+    """{protection: {component: newest version seen across all clients}}."""
+    latest: dict[str, dict[str, str]] = {}
     for s in summaries:
-        for comp, versions in (s.get("by_component") or {}).items():
-            for v in versions:
-                if comp not in latest or version_key(v) > version_key(latest[comp]):
-                    latest[comp] = v
+        bc = s.get("by_component") or {}
+        if not _is_new_format(bc):
+            continue  # snapshot from before per-protection tracking
+        for prot, comps in bc.items():
+            for comp, versions in comps.items():
+                for v in versions:
+                    cur = latest.setdefault(prot, {}).get(comp)
+                    if cur is None or version_key(v) > version_key(cur):
+                        latest[prot][comp] = v
     return latest
 
 
 def components_behind(components: dict | None, latest: dict[str, str]) -> list[str]:
+    """latest is the {component: version} map for this endpoint's protection type."""
     comps = components or {}
     behind = {c for c, v in comps.items()
               if not c.startswith("_") and c in latest and version_key(str(v)) < version_key(latest[c])}
-    behind.update(comps.get("_outdated") or [])  # SWP's own latest=false flags
+    behind.update(comps.get("_outdated") or [])  # SWP console's own latest=false flags
     return sorted(behind)
 
 
-def pattern_status(summary: dict, latest: dict[str, str]) -> list[dict]:
-    """Per pattern: latest version, endpoints on it, endpoints behind."""
-    rows = []
-    for comp, versions in (summary.get("by_component") or {}).items():
-        lv = latest.get(comp)
-        current = sum(n for v, n in versions.items() if v == lv)
-        total = sum(versions.values())
-        rows.append({"name": comp, "latest": lv, "current": current, "behind": total - current, "total": total,
-                     "versions": versions})
-    return sorted(rows, key=lambda r: (-r["behind"], r["name"]))
+def pattern_status(summary: dict, latest: dict[str, dict[str, str]]) -> dict[str, list[dict]]:
+    """{protection: [{name, latest, current, behind, total, versions}]}."""
+    out = {}
+    bc = summary.get("by_component") or {}
+    if not _is_new_format(bc):
+        return out
+    for prot, comps in bc.items():
+        rows = []
+        for comp, versions in comps.items():
+            lv = (latest.get(prot) or {}).get(comp)
+            current = sum(n for v, n in versions.items() if v == lv)
+            total = sum(versions.values())
+            rows.append({"name": comp, "latest": lv, "current": current, "behind": total - current,
+                         "total": total, "versions": versions})
+        out[prot] = sorted(rows, key=lambda r: (-r["behind"], r["name"]))
+    return out
+
+
+def detail_components(detail: dict) -> dict[str, str]:
+    """Exact versions from GET /v3.0/endpointSecurity/endpoints/{agentGuid}:
+    eppAgent.patterns[] and eppAgent.engines[] = {id, name, version, updatedDateTime}."""
+    epp = detail.get("eppAgent") or {}
+    out = {}
+    for section in ("patterns", "engines"):
+        for p in epp.get(section) or []:
+            if isinstance(p, dict) and p.get("name") and p.get("version") not in (None, ""):
+                out[str(p["name"]).strip()] = str(p["version"]).strip()
+    return out
 
 
 def summarize(endpoints: list[dict]) -> dict:
@@ -283,42 +314,72 @@ def summarize(endpoints: list[dict]) -> dict:
     }
 
 
+def refresh_details(session, client: Client, v1, rows: list[dict], now: datetime) -> dict[str, dict]:
+    """Return {agent_guid: components} for managed SEP/SWP endpoints, re-fetching the stalest ones."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    cache = {d.agent_guid: d for d in session.scalars(select(EndpointDetail).where(EndpointDetail.client_id == client.id))}
+    wanted = [r["agent_guid"] for r in rows if r["protection"] in ("SEP", "SWP")]
+    ttl = timedelta(minutes=settings.detail_ttl_minutes)
+
+    def age(g):
+        d = cache.get(g)
+        if not d or not d.fetched_at:
+            return timedelta.max
+        fa = d.fetched_at if d.fetched_at.tzinfo else d.fetched_at.replace(tzinfo=timezone.utc)
+        return now - fa
+
+    stale = sorted((g for g in wanted if age(g) > ttl), key=age, reverse=True)[: settings.detail_batch]
+
+    def fetch(g):
+        try:
+            return g, detail_components(v1.get_endpoint(g))
+        except Exception as exc:
+            log.debug("%s: detail %s failed: %s", client.name, g, exc)
+            return g, None
+
+    if stale:
+        with ThreadPoolExecutor(max_workers=max(1, settings.detail_workers)) as pool:
+            for g, comps in pool.map(fetch, stale):
+                if comps is None:
+                    continue
+                d = cache.get(g)
+                if d is None:
+                    d = EndpointDetail(client_id=client.id, agent_guid=g)
+                    session.add(d)
+                    cache[g] = d
+                d.components, d.fetched_at = comps, now
+        log.info("%s: refreshed exact versions for %d endpoints", client.name, len(stale))
+    # forget endpoints that disappeared
+    gone = set(cache) - set(wanted)
+    if gone:
+        session.execute(delete(EndpointDetail).where(EndpointDetail.client_id == client.id,
+                                                     EndpointDetail.agent_guid.in_(gone)))
+    return {g: cache[g].components for g in wanted if g in cache and cache[g].components}
+
+
 def collect_client(session, client: Client, v1: VisionOneClient | None = None) -> dict:
     own = v1 is None
     v1 = v1 or VisionOneClient(crypto.decrypt(client.api_key_enc), client.region)
     try:
         raw_endpoints = v1.list_endpoints()
+        now = utcnow()
+        rows = [normalize_endpoint(i, now) for i in raw_endpoints]
+        rows = list({r["agent_guid"]: r for r in rows}.values())  # de-duplicate by guid
+        # Only "All managed endpoints" (SEP + SWP + Sensor only) count, as in the console.
+        unmanaged = sum(1 for r in rows if r["protection"] == "Unmanaged")
+        rows = [r for r in rows if r["protection"] != "Unmanaged"]
+        exact = refresh_details(session, client, v1, rows, now)
     finally:
         if own:
             v1.close()
 
-    connector_errors = {}
-    exact = {}
-    try:
-        exact.update(fetch_swp_components(client))
-    except Exception as exc:  # optional source; never fail the poll
-        connector_errors["swp"] = str(exc)[:300]
-        log.warning("%s: SWP patterns unavailable: %s", client.name, exc)
-    # Apex One: ProductAgents (the only path this key type allows) carries no pattern versions
-    # (checked on Bandhan 2026-11-12), so it is not polled. fetch_apex_components stays for later.
-
-    now = utcnow()
-    rows = [normalize_endpoint(i, now) for i in raw_endpoints]
-    if exact:
-        for r in rows:
-            name = r["name"].strip().lower()
-            comps = exact.get(name) or exact.get(name.split(".")[0])
-            if comps:
-                r["components"] = {**(r.get("components") or {}), **comps}
-    # de-duplicate by guid
-    rows = list({r["agent_guid"]: r for r in rows}.values())
-    # Only "All managed endpoints" (SEP + SWP + Sensor only) count, as in the console.
-    unmanaged = sum(1 for r in rows if r["protection"] == "Unmanaged")
-    rows = [r for r in rows if r["protection"] != "Unmanaged"]
+    for r in rows:
+        if r["agent_guid"] in exact:
+            r["components"] = exact[r["agent_guid"]]
     summary = summarize(rows)
     summary["unmanaged"] = unmanaged
-    summary["connector_errors"] = connector_errors
-    summary["exact_patterns_from"] = ["swp"] if client.swp_url and "swp" not in connector_errors else []
+    summary["exact_versions"] = {"have": len(exact), "of": sum(1 for r in rows if r["protection"] in ("SEP", "SWP"))}
 
     session.execute(delete(Endpoint).where(Endpoint.client_id == client.id))
     session.add_all(Endpoint(client_id=client.id, **r) for r in rows)

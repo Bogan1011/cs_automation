@@ -92,10 +92,12 @@ function startOverview(pollSeconds) {
          ['behind_latest', '&filter=agent_behind']].map(([k, q]) => `<td class="num">${s[k] == null ? '–' : `<a class="cnt" href="/endpoints?client=${c.id}${q}">${s[k]}</a>`}</td>`).join('') +
         `<td>${esc(['SEP', 'SWP'].filter(k => (s.latest_versions || {})[k]).map(k => k + ' ' + s.latest_versions[k]).join(' · ') || '–')}</td><td>${fmtTime(c.last_poll_at)}</td></tr>`;
     }).join('');
-    const names = Object.keys(latest).sort();
+    const PN = {SEP: 'Standard Endpoint Protection', SWP: 'Server & Workload Protection'};
+    const prots = Object.keys(latest).sort();
     const box = document.getElementById('latest');
-    box.innerHTML = names.map(k => `<div class="lp"><span>${esc(k)}</span><b>${esc(latest[k])}</b></div>`).join('');
-    box.hidden = box.previousElementSibling.hidden = !names.length;
+    box.innerHTML = prots.map(p => `<div class="lpcol"><h3 class="subhead">${esc(PN[p] || p)}</h3>` +
+      Object.keys(latest[p]).sort().map(k => `<div class="lp"><span>${esc(k)}</span><b>${esc(latest[p][k])}</b></div>`).join('') + '</div>').join('');
+    box.hidden = box.previousElementSibling.hidden = !prots.length;
     countUp();
   }
   load();

@@ -28,6 +28,11 @@ class Settings:
     poll_interval: int = field(default_factory=lambda: int(_env("POLL_INTERVAL_SECONDS", "300")))
     retention_days: int = field(default_factory=lambda: int(_env("RETENTION_DAYS", "90")))
     stale_days: int = field(default_factory=lambda: int(_env("STALE_DAYS", "7")))
+    # Exact pattern versions need one API call per endpoint, so they refresh on a rolling basis:
+    # each poll re-fetches up to DETAIL_BATCH endpoints whose cached versions are older than DETAIL_TTL_MINUTES.
+    detail_ttl_minutes: int = field(default_factory=lambda: int(_env("DETAIL_TTL_MINUTES", "60")))
+    detail_batch: int = field(default_factory=lambda: int(_env("DETAIL_BATCH", "300")))
+    detail_workers: int = field(default_factory=lambda: int(_env("DETAIL_WORKERS", "6")))
     graph_tenant_id: str = field(default_factory=lambda: _env("GRAPH_TENANT_ID"))
     graph_client_id: str = field(default_factory=lambda: _env("GRAPH_CLIENT_ID"))
     graph_client_secret: str = field(default_factory=lambda: _env("GRAPH_CLIENT_SECRET"))

@@ -66,6 +66,17 @@ class Endpoint(Base):
     client: Mapped[Client] = relationship(back_populates="endpoints")
 
 
+class EndpointDetail(Base):
+    """Cached exact pattern/engine versions per endpoint (from the single-endpoint API), refreshed on a rolling basis."""
+    __tablename__ = "endpoint_details"
+    __table_args__ = (UniqueConstraint("client_id", "agent_guid"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
+    agent_guid: Mapped[str] = mapped_column(String(80))
+    components: Mapped[dict] = mapped_column(JSON, default=dict)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Snapshot(Base):
     """Per-poll summary numbers, kept for trends and reports."""
     __tablename__ = "snapshots"
