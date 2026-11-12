@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}{{ client.name }} · Centralised Vision One{% endblock %}
+{% block content %}
+{% set s = client.summary or {} %}
+
+<div class="bar head">
+  <div>
+    <h1>{{ client.name }} <span class="tag">{{ client.region }}</span></h1>
+    <p class="muted small">
+      Updated <span class="ts">{{ client.last_poll_at or 'never' }}</span> · refreshes every 5 min
+      {% if client.last_poll_ok == False %}<span class="err">· last poll failed: {{ client.last_error }}</span>{% endif %}
+    </p>
+  </div>
+  <div class="actions">
+    <button class="ghost" id="refresh" data-id="{{ client.id }}">Refresh</button>
+    <a class="button ghost" href="/clients/{{ client.id }}/report.pdf">PDF</a>
+    <button id="report" data-id="{{ client.id }}" title="{{ '' if graph_configured else 'Outlook is not set up yet: falls back to a PDF download' }}">Report → Outlook draft</button>
+  </div>
+</div>
+
+<div class="inv-layout">
+  <aside class="inv card" id="inv">
+    <h2>Endpoint Inventory</h2>
+    {% macro row(k, label, n, kind, sub=False, link=True) %}
+      {% if link %}<button type="button" class="inv-row{{ ' sub' if sub }}{{ ' on' if k == 'all' }}" data-k="{{ k }}" data-label="{{ label }}">
+      {% else %}<div class="inv-row{{ ' sub' if sub }} static" title="Unmanaged endpoints have no agent, so they are not listed">{% endif %}
+        <span>{{ label }}</span><b class="chip {{ kind if n else 'zero' }}">{{ n }}</b>
+      {% if link %}</button>{% else %}</div>{% endif %}
+    {% endmacro %}
+    <details open><summary>Immediate action required</summary>
+      {% for k, label, n in inv.immediate %}{{ row(k, label, n, 'red') }}{% endfor %}
+    </details>
+    <details open><summary>Recommended action</summary>
+      {% for k, label, n in inv.recommended %}{{ row(k, label, n, 'blue', link=(k != 'unmanaged')) }}{% endfor %}
+    </details>
+    <details open><summary>Security deployment</summary>
+      {% for k, label, n in inv.deployment %}{{ row(k, label, n, 'plain', sub=(k != 'all')) }}{% endfor %}
+    </details>
+    <div class="inv-foot">
+      <div><span class="dot on"></span>{{ s.online or 0 }} online</div>
+      <div><span class="dot off"></span>{{ s.offline or 0 }} offline</div>
+      <div><span class="dot stale"></span>{{ s.stale or 0 }} not seen 7+ days</div>
+    </div>
+  </aside>
+
+  <section class="inv-main">
+    <div class="listhead">
+      <div><h2 id="viewtitle">All managed endpoints</h2><span class="muted small"><span id="shown">{{ endpoints | length }}</span> endpoints</span></div>
+      <a class="button ghost" id="csv" href="/endpoints.csv?client={{ client.id }}">Export CSV</a>
+    </div>
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Search name, IP, OS, policy…" autocomplete="off">
+      <div class="seg" id="st">
+        <button type="button" data-s="" class="on">All</button><button type="button" data-s="on">Online</button>
+        <button type="button" data-s="off">Offline</button><button type="button" data-s="stale">Not seen 7d+</button>
+      </div>
+    </div>
+    <div class="tablewrap list">
+    <table id="eps"><thead><tr>
+      <th data-k="name" class="sort">Endpoint</th><th data-k="seen" class="sort">Status</th><th data-k="prot" class="sort">Type</th>
+      <th data-k="agent" class="sort">Agent</th><th data-k="sensor" class="sort">Sensor</th><th data-k="comp" class="sort">Components</th>
+      <th data-k="ip" class="sort">IP address</th><th data-k="policy" class="sort">Policy</th>
+    </tr></thead><tbody>
+    {% set pshort = {'SEP': 'SEP', 'SWP': 'SWP', 'Sensor only': 'Sensor'} %}
+    {% set pnames = {'SEP': 'Standard Endpoint Protection', 'SWP': 'Server & Workload Protection', 'Sensor only': 'Sensor only'} %}
+    {% for e in endpoints %}
+    {% set cs = (e.component_version or '') | lower %}
+    {% set comp = 2 if behind[e.id] or cs.startswith('outdated') else (0 if cs.startswith('latest') else 1) %}
+    <tr data-p="{{ e.protection }}" data-f="{{ flags[e.id] | join(' ') }}" data-st="{{ 'stale' if e.stale else ('on' if e.online else 'off') }}"
+        data-name="{{ e.name | lower }}" data-seen="{{ '9' if e.online and not e.stale else (e.last_connected.timestamp() | int if e.last_connected else 0) }}"
+        data-prot="{{ e.protection }}" data-agent="{{ e.agent_version }}" data-sensor="{{ e.sensor_version }}" data-comp="{{ comp }}" data-ip="{{ e.ip }}" data-policy="{{ e.policy | lower }}">
+      <td class="name"><div class="nm">{{ e.name }}{% for f in flags[e.id] %} <span class="tag {{ 'bad' if f == 'deploy_failed' else 'warn' }}">{{ {'deploy_failed': 'deploy failed', 'agent_update': 'update', 'sensor_update': 'sensor update', 'sensor_disabled': 'sensor off'}[f] }}</span>{% endfor %}</div><div class="sub muted">{{ e.os or '–' }}</div></td>
+      <td class="nowrap"><span class="dot {{ 'stale' if e.stale else ('on' if e.online else 'off') }}"></span>{% if e.online and not e.stale %}Online{% elif e.last_connected %}<span class="seen" data-t="{{ e.last_connected.isoformat() }}">{{ 'Not seen 7d+' if e.stale else 'Offline' }}</span>{% else %}{{ 'Not seen 7d+' if e.stale else 'Offline' }}{% endif %}</td>
+      <td><span class="ptag {{ e.protection | replace(' ', '-') | lower }}" title="{{ pnames.get(e.protection, e.protection) }}">{{ pshort.get(e.protection, e.protection) }}</span></td>
+      <td class="mono">{{ e.agent_version or '–' }}</td>
+      <td class="mono">{{ e.sensor_version or '–' }}</td>
+      <td class="nowrap">{% if behind[e.id] %}<span class="tag warn" title="{{ behind[e.id] | join(', ') }}">{{ behind[e.id] | length }} behind</span>{% elif cs.startswith('outdated') %}<span class="tag warn">Outdated</span>{% elif cs.startswith('latest') %}<span class="tag ok">Latest</span>{% else %}<span class="muted">–</span>{% endif %}</td>
+      <td class="mono ip" title="{{ e.ip }}">{{ e.ip or '–' }}</td>
+      <td class="pol" title="{{ e.policy }}">{{ e.policy or '–' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8" class="muted">No endpoints collected yet.</td></tr>
+    {% endfor %}
+    <tr id="none" hidden><td colspan="8" class="muted">No endpoints in this view.</td></tr>
+    </tbody></table>
+    </div>
+    <div class="pager">
+      <span class="muted" id="range"></span>
+      <div class="pg">
+        <label class="muted">Rows <select id="size"><option>25</option><option selected>50</option><option>100</option><option value="0">All</option></select></label>
+        <button type="button" class="ghost" id="prev" aria-label="Previous page">‹</button>
+        <span id="pageno" class="muted"></span>
+        <button type="button" class="ghost" id="next" aria-label="Next page">›</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+{% set names = {'SEP': 'Standard Endpoint Protection', 'SWP': 'Server & Workload Protection', 'Sensor only': 'Sensor only'} %}
+<details class="card fold">
+  <summary><span>Pattern &amp; engine versions</span>
+    <span class="muted small">{% if s.exact_versions %}exact versions known for {{ s.exact_versions.have }} of {{ s.exact_versions.of }} endpoints{% endif %}</span></summary>
+  {% if patterns %}
+  {% for prot, prows in patterns.items() %}
+  <h3 class="subhead">{{ names.get(prot, prot) }}</h3>
+  <div class="tablewrap flat">
+  <table class="patterns"><thead><tr><th>Component</th><th>Latest version</th><th>On latest</th><th style="width:34%"></th><th>Behind</th></tr></thead><tbody>
+  {% for r in prows %}
+  <tr title="{% for v, n in r.versions.items() %}{{ v }}: {{ n }}&#10;{% endfor %}">
+    <td>{{ r.name }}</td><td class="mono">{{ r.latest or '–' }}</td>
+    <td class="num"><a class="cnt" href="/endpoints?client={{ client.id }}&protection={{ prot | urlencode }}&component={{ r.name | urlencode }}&filter=component_current">{{ r.current }}</a></td>
+    <td><span class="vbar"><i style="width:{{ (100 * r.current / r.total) | round(1) if r.total else 0 }}%"></i></span></td>
+    <td class="num {{ 'badtxt' if r.behind }}"><a class="cnt" href="/endpoints?client={{ client.id }}&protection={{ prot | urlencode }}&component={{ r.name | urlencode }}&filter=component_behind">{{ r.behind }}</a></td>
+  </tr>
+  {% endfor %}
+  </tbody></table>
+  </div>
+  {% endfor %}
+  {% else %}
+  <p class="muted">Exact versions are still loading. They fill in over the next few polls.</p>
+  {% endif %}
+</details>
+{% endblock %}
+{% block scripts %}<script>startClient({{ client.id }});</script>{% endblock %}

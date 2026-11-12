@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bar head">
+  <div><h1>Home</h1><p class="muted small">One card per client. Open a client for its full Endpoint Inventory.</p></div>
+</div>
+
+<section class="homegrid">
+{% for c in cards %}
+  {% set s = c.summary or {} %}
+  {% set dep = {} %}{% for k, _, n in c.inv.deployment %}{% set _ = dep.update({k: n}) %}{% endfor %}
+  {% set act = (c.inv.immediate + c.inv.recommended) | rejectattr(0, 'equalto', 'unmanaged') | list %}
+  <a class="card hcard" href="/clients/{{ c.id }}">
+    <div class="hc-top">
+      <h3>{{ c.name }}</h3>
+      <span class="tag">{{ c.region }}</span>
+      {% if c.last_poll_ok == False %}<span class="pill fail"><i></i>Poll failed</span>{% elif c.last_poll_at %}<span class="pill live"><i></i>Live</span>{% endif %}
+    </div>
+    <div class="hc-big"><b>{{ dep.get('all', 0) }}</b><span>managed endpoints</span></div>
+    <div class="hc-split">
+      <span><em>SEP</em> {{ dep.get('SEP', 0) }}</span><span><em>SWP</em> {{ dep.get('SWP', 0) }}</span><span><em>Sensor</em> {{ dep.get('Sensor only', 0) }}</span>
+    </div>
+    {% set t = dep.get('all', 0) %}
+    <div class="hc-bar" title="Online / offline / not seen 7+ days">
+      <i class="on" style="width:{{ (100 * (s.online or 0) / t) | round(1) if t else 0 }}%"></i>
+      <i class="off" style="width:{{ (100 * ((s.offline or 0) - (s.stale or 0)) / t) | round(1) if t else 0 }}%"></i>
+      <i class="stale" style="width:{{ (100 * (s.stale or 0) / t) | round(1) if t else 0 }}%"></i>
+    </div>
+    <div class="hc-legend muted"><span><span class="dot on"></span>{{ s.online or 0 }} online</span><span><span class="dot off"></span>{{ s.offline or 0 }} offline</span><span><span class="dot stale"></span>{{ s.stale or 0 }} 7d+</span></div>
+    <ul class="hc-act">
+      {% for k, label, n in act %}<li><span>{{ label }}</span><b class="chip {{ ('red' if k == 'deploy_failed' else 'blue') if n else 'zero' }}">{{ n }}</b></li>{% endfor %}
+    </ul>
+    <div class="hc-foot muted"><span>Updated <span class="ts">{{ c.last_poll_at or 'never' }}</span></span><span class="go">Open ›</span></div>
+  </a>
+{% else %}
+  <p class="muted">No clients yet. Add one with <code>python -m app.cli add-client</code>.</p>
+{% endfor %}
+</section>
+
+<section class="card widgets-soon">
+  <b>Widgets</b>
+  <span class="muted">This space is kept for cross-client widgets you want to add later.</span>
+</section>
+{% endblock %}
