@@ -461,3 +461,49 @@ def collect_all() -> None:
         cutoff = datetime.now(timezone.utc) - timedelta(days=settings.retention_days)
         session.execute(delete(Snapshot).where(Snapshot.taken_at < cutoff))
         session.commit()
+
+
+# --- Vision One "Endpoint Inventory" panel -------------------------------------------------------
+# The console groups endpoints under Immediate action required / Recommended action / Security
+# deployment. The API has no single field for those groups, so they are derived from the record.
+INVENTORY_FLAGS = {
+    "deploy_failed": "Deployment failed",
+    "agent_update": "Agent update recommended",
+    "sensor_disabled": "Sensor disabled",
+    "sensor_update": "Sensor update recommended",
+}
+
+
+def inventory_flags(e) -> list[str]:
+    """Console action groups this endpoint belongs to (e is an Endpoint row or a normalized dict)."""
+    get = (lambda k: e.get(k)) if isinstance(e, dict) else (lambda k: getattr(e, k, None))
+    raw = get("raw") or {}
+    edr = raw.get("edrSensor") or {}
+    epp = raw.get("eppAgent") or {}
+    prot = get("protection") or ""
+    avs = str(get("agent_version_status") or "").lower()
+    flags = []
+    install = " ".join(str(x) for x in (edr.get("status"), epp.get("status"), raw.get("agentUpdateStatus"),
+                                         edr.get("componentUpdateStatus"))).lower()
+    if avs == "updatefailed" or "fail" in install:
+        flags.append("deploy_failed")
+    if avs == "updaterecommended":
+        flags.append("sensor_update" if prot == "Sensor only" else "agent_update")
+    if edr and str(edr.get("status") or "").lower() not in ("enabled", ""):
+        flags.append("sensor_disabled")
+    return flags
+
+
+def inventory(endpoints, summary: dict | None) -> dict:
+    """Counts for the Endpoint Inventory panel, in console order."""
+    flags = Counter(f for e in endpoints for f in inventory_flags(e))
+    prot = Counter(getattr(e, "protection", "") for e in endpoints)
+    return {
+        "immediate": [("deploy_failed", INVENTORY_FLAGS["deploy_failed"], flags["deploy_failed"])],
+        "recommended": [(k, INVENTORY_FLAGS[k], flags[k]) for k in ("agent_update", "sensor_disabled", "sensor_update")]
+                       + [("unmanaged", "Unmanaged endpoints", (summary or {}).get("unmanaged", 0))],
+        "deployment": [("all", "All managed endpoints", len(endpoints)),
+                       ("SEP", "Standard Endpoint Protection", prot["SEP"]),
+                       ("SWP", "Server & Workload Protection", prot["SWP"]),
+                       ("Sensor only", "Sensor only", prot["Sensor only"])],
+    }

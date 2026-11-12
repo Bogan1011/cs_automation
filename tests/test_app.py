@@ -2,6 +2,7 @@ import json
 
 import httpx
 import pytest
+from sqlalchemy import select
 from fastapi.testclient import TestClient
 
 from app import collector, crypto, outlook
@@ -146,7 +147,7 @@ def test_web_requires_login_and_renders():
         data = http.get("/api/overview").json()
         assert data["clients"][0]["summary"]["total"] == 7
         page = http.get(f"/clients/{cid}")
-        assert page.status_code == 200 and "BL-SRV-DB01" in page.text and "Agent versions" in page.text and "Virus Pattern" in page.text
+        assert page.status_code == 200 and "BL-SRV-DB01" in page.text and "Endpoint Inventory" in page.text and "All managed endpoints" in page.text and "Virus Pattern" in page.text
         assert http.get(f"/clients/{cid}/report.pdf").content.startswith(b"%PDF")
         r = http.post(f"/api/clients/{cid}/report")
         assert r.status_code == 400 and r.json()["download"]  # Outlook not configured -> PDF fallback
@@ -242,7 +243,7 @@ def test_exact_versions_from_endpoint_detail_per_protection_and_cached():
         page = http.get(f"/endpoints?client={a}&protection=SEP&component=Virus+Pattern&filter=component_behind")
         assert "BL-LAP-APEX" in page.text and "<b>1</b> endpoints" in page.text
         cp = http.get(f"/clients/{a}")
-        assert "Exact pattern &amp; engine versions" in cp.text and "19.123.00" in cp.text
+        assert "Pattern &amp; engine versions" in cp.text and "19.123.00" in cp.text
         ov = http.get("/api/overview").json()
         assert ov["latest_patterns"]["SEP"]["Virus Pattern"] == "19.123.00"
         assert http.get(f"/clients/{a}/report.pdf").content.startswith(b"%PDF")
@@ -262,3 +263,24 @@ def test_swp_versions_real_shape():
         {"name": "Anti-Malware Engine", "version": "26.530.1002", "platform": "Windows 64-bit", "latest": False}]}}
     v = collector.swp_versions(comp)
     assert v["_outdated"] == ["Anti-Malware Engine (Windows 64-bit)"]
+
+
+def test_home_opens_first_client_tab_and_inventory_counts():
+    from app import collector
+    from app.db import Endpoint
+    a = make_client()
+    collect(a)
+    with TestClient(app) as http:
+        http.post("/login", data={"username": "admin", "password": "pw"})
+        r = http.get("/", follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == f"/clients/{a}"
+    with SessionLocal() as s:
+        eps = s.scalars(select(Endpoint).where(Endpoint.client_id == a)).all()
+        inv = collector.inventory(eps, {"unmanaged": 4})
+    dep = {k: n for k, _, n in inv["deployment"]}
+    assert dep["all"] == len(eps) == dep["SEP"] + dep["SWP"] + dep["Sensor only"]
+    rec = {k: n for k, _, n in inv["recommended"]}
+    assert rec["unmanaged"] == 4
+    assert rec["agent_update"] == sum(e.agent_version_status == "updateRecommended" and e.protection != "Sensor only" for e in eps)
+    assert collector.inventory_flags({"protection": "SEP", "agent_version_status": "updateFailed",
+                                      "raw": {"edrSensor": {"status": "disabled"}}}) == ["deploy_failed", "sensor_disabled"]

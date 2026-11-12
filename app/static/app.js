@@ -104,31 +104,29 @@ function startOverview(pollSeconds) {
   setInterval(load, 60000);
 }
 
-function startClient() {
+function startClient(clientId) {
   const rows = [...document.querySelectorAll('#eps tbody tr[data-p]')];
-  let prot = '';
-  const search = document.getElementById('search'), issues = document.getElementById('issues');
+  const search = document.getElementById('search'), none = document.getElementById('none');
+  const title = document.getElementById('viewtitle'), shown = document.getElementById('shown'), csv = document.getElementById('csv');
+  const PROT = ['SEP', 'SWP', 'Sensor only'];
+  let view = 'all';
+  const match = r => view === 'all' || (PROT.includes(view) ? r.dataset.p === view : r.dataset.f.split(' ').includes(view));
   function filter() {
-    const q = search.value.toLowerCase();
-    rows.forEach(r => {
-      const show = (!prot || r.dataset.p === prot) && (!issues.checked || r.dataset.issue === '1') && (!q || r.textContent.toLowerCase().includes(q));
-      r.style.display = show ? '' : 'none';
-    });
+    const q = search.value.toLowerCase(); let n = 0;
+    rows.forEach(r => { const show = match(r) && (!q || r.textContent.toLowerCase().includes(q)); r.hidden = !show; n += show; });
+    shown.textContent = n.toLocaleString(); if (none) none.hidden = n > 0 || !rows.length;
   }
   search.addEventListener('input', filter);
-  issues.addEventListener('change', filter);
-  // iOS-style segmented control with sliding thumb
-  const seg = document.getElementById('prot'), thumb = document.createElement('span');
-  thumb.className = 'thumb'; seg.prepend(thumb);
-  const moveThumb = b => { thumb.style.left = b.offsetLeft + 'px'; thumb.style.width = b.offsetWidth + 'px'; };
-  seg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
-    seg.querySelectorAll('button').forEach(x => x.classList.remove('on'));
-    b.classList.add('on'); moveThumb(b); prot = b.dataset.p; filter();
+  document.querySelectorAll('.inv-row[data-k]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.inv-row.on').forEach(x => x.classList.remove('on'));
+    b.classList.add('on'); view = b.dataset.k; title.textContent = b.dataset.label;
+    const p = new URLSearchParams({client: clientId});
+    if (PROT.includes(view)) p.set('protection', view); else if (view !== 'all') p.set('filter', view);
+    csv.href = '/endpoints.csv?' + p; filter();
+    if (innerWidth < 900) document.querySelector('.inv-main').scrollIntoView({behavior: 'smooth'});
   }));
-  requestAnimationFrame(() => moveThumb(seg.querySelector('button.on')));
-  addEventListener('resize', () => moveThumb(seg.querySelector('button.on')));
-  document.querySelectorAll('.kpi b').forEach(b => { const v = Number(b.textContent); if (!isNaN(v)) { b.innerHTML = `<span data-n="${v}">0</span>`; } });
-  countUp();
+  // keep the active tab in view when there are many clients
+  document.querySelector('#tabs a.on')?.scrollIntoView({inline: 'center', block: 'nearest'});
 
   document.getElementById('refresh').addEventListener('click', async e => {
     const b = e.currentTarget; busy(b, 'Refreshing…');

@@ -101,7 +101,12 @@ def _client_card(session, c: Client, latest: dict | None = None) -> dict:
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
+    """Each client is managed on its own, so the home page opens the first client's tab."""
     require_login(request)
+    with SessionLocal() as s:
+        first = s.scalars(select(Client).where(Client.enabled.is_(True)).order_by(Client.name)).first()
+    if first:
+        return RedirectResponse(f"/clients/{first.id}", status_code=303)
     return templates.TemplateResponse(request, "index.html", {"poll_interval": settings.poll_interval})
 
 
@@ -124,8 +129,12 @@ def client_page(request: Request, client_id: int):
         history = s.scalars(select(Snapshot).where(Snapshot.client_id == c.id)
                             .order_by(Snapshot.taken_at.desc()).limit(288)).all()
         card = _client_card(s, c, latest)
+        tabs = s.scalars(select(Client).where(Client.enabled.is_(True)).order_by(Client.name)).all()
         return templates.TemplateResponse(request, "client.html", {
             "client": card, "endpoints": endpoints,
+            "tabs": [{"id": t.id, "name": t.name, "ok": t.last_poll_ok} for t in tabs],
+            "inv": collector.inventory(endpoints, card["summary"]),
+            "flags": {e.id: collector.inventory_flags(e) for e in endpoints},
             "patterns": collector.pattern_status(card["summary"] or {}, latest),
             "behind": {e.id: collector.components_behind(e.components, latest.get(e.protection, {})) for e in endpoints},
             "history": [{"t": h.taken_at.isoformat(), "total": h.summary.get("total", 0),
@@ -207,6 +216,8 @@ FILTERS = {
     "patterns_outdated": ("Patterns outdated", lambda e: _cstate(e) == "outdated"),
     "patterns_unknown": ("Pattern status unknown", lambda e: _cstate(e) == "unknown"),
     "agent_behind": ("Agents needing an update", lambda e: e.behind_latest),
+    **{k: (label, (lambda k: lambda e: k in collector.inventory_flags(e))(k))
+       for k, label in collector.INVENTORY_FLAGS.items()},
 }
 PROT_NAMES = {"SEP": "Standard Endpoint Protection", "SWP": "Server & Workload Protection", "Sensor only": "Sensor only"}
 
