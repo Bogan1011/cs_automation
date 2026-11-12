@@ -36,6 +36,21 @@ function toast(html, ms = 0) {
 function busy(b, label) { b.disabled = true; b.dataset.label = b.innerHTML; b.innerHTML = `<span class="spin"></span>${label}`; }
 function idle(b) { b.disabled = false; b.innerHTML = b.dataset.label; }
 
+// "17:00:00, 5th Nov (7 days ago)" in the viewer's local time
+const ord = d => d + (d % 10 === 1 && d !== 11 ? 'st' : d % 10 === 2 && d !== 12 ? 'nd' : d % 10 === 3 && d !== 13 ? 'rd' : 'th');
+function ago(ms) {
+  const m = Math.floor(ms / 60000), h = Math.floor(m / 60), d = Math.floor(h / 24);
+  if (d >= 1) return d === 1 ? '1 day ago' : `${d} days ago`;
+  if (h >= 1) return h === 1 ? '1 hour ago' : `${h} hours ago`;
+  return m <= 1 ? 'just now' : `${m} min ago`;
+}
+function seenText(iso) {
+  const t = new Date(iso); if (isNaN(t)) return '';
+  const now = new Date(), time = t.toLocaleTimeString('en-GB', {hour12: false});
+  const date = `${ord(t.getDate())} ${t.toLocaleString('en-GB', {month: 'short'})}` + (t.getFullYear() !== now.getFullYear() ? ` ${t.getFullYear()}` : '');
+  return `${time}, ${date} (${ago(now - t)})`;
+}
+document.querySelectorAll('.seen[data-t]').forEach(el => { const s = seenText(el.dataset.t); if (s) { el.textContent = s; el.title = new Date(el.dataset.t).toString(); } });
 document.querySelectorAll('.ts').forEach(el => { const t = el.textContent.trim(); if (t && t !== 'never') el.textContent = fmtTime(t); });
 
 async function api(url, opts) {

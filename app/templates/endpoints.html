@@ -20,12 +20,12 @@
 <tr data-p="">
   {% if multi %}<td>{{ cname }}</td>{% endif %}
   <td>{{ e.name }}</td><td>{{ e.protection }}</td>
-  <td><span class="dot {{ 'stale' if e.stale else ('on' if e.online else 'off') }}"></span>{{ 'stale' if e.stale else (e.agent_status or ('online' if e.online else 'offline')) }}</td>
+  <td><span class="dot {{ 'stale' if e.stale else ('on' if e.online else 'off') }}"></span>{% if e.online and not e.stale %}Online{% elif e.last_connected %}<span class="seen" data-t="{{ e.last_connected.isoformat() }}">{{ 'Not seen 7d+' if e.stale else 'Offline' }}</span>{% else %}{{ 'Not seen 7d+' if e.stale else 'Offline' }}{% endif %}</td>
   <td>{{ e.agent_version or '–' }}</td>
   <td>{% if e.behind_latest %}<span class="tag warn">{{ e.agent_version_status or 'behind' }}</span>{% else %}{{ e.agent_version_status or '–' }}{% endif %}</td>
   <td>{% if cs == 'outdated' %}<span class="tag warn">outdated</span>{% elif cs == 'latest' %}<span class="tag ok">latest</span>{% else %}<span class="muted">unknown</span>{% endif %}</td>
   <td>{{ e.sensor_version or '–' }}</td><td>{{ e.os }}</td><td>{{ e.ip }}</td><td>{{ e.policy }}</td>
-  <td class="ts">{{ e.last_connected.isoformat() if e.last_connected else '' }}</td>
+  <td class="nowrap">{% if e.last_connected %}<span class="seen" data-t="{{ e.last_connected.isoformat() }}"></span>{% else %}–{% endif %}</td>
 </tr>
 {% else %}
 <tr><td colspan="12" class="muted">No endpoints match.</td></tr>

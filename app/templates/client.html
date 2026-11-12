@@ -66,13 +66,13 @@
     {% set cs = (e.component_version or '') | lower %}
     <tr data-p="{{ e.protection }}" data-f="{{ flags[e.id] | join(' ') }}">
       <td class="name">{{ e.name }}{% for f in flags[e.id] %} <span class="tag {{ 'bad' if f == 'deploy_failed' else 'warn' }}">{{ {'deploy_failed': 'deploy failed', 'agent_update': 'update', 'sensor_update': 'sensor update', 'sensor_disabled': 'sensor off'}[f] }}</span>{% endfor %}</td>
-      <td class="nowrap"><span class="dot {{ 'stale' if e.stale else ('on' if e.online else 'off') }}"></span>{{ 'Not seen 7d+' if e.stale else ('Online' if e.online else 'Offline') }}</td>
+      <td class="nowrap"><span class="dot {{ 'stale' if e.stale else ('on' if e.online else 'off') }}"></span>{% if e.online and not e.stale %}Online{% elif e.last_connected %}<span class="seen" data-t="{{ e.last_connected.isoformat() }}">{{ 'Not seen 7d+' if e.stale else 'Offline' }}</span>{% else %}{{ 'Not seen 7d+' if e.stale else 'Offline' }}{% endif %}</td>
       <td class="nowrap">{{ pnames.get(e.protection, e.protection) }}</td>
       <td class="mono">{{ e.agent_version or '–' }}</td>
       <td class="mono">{{ e.sensor_version or '–' }}</td>
       <td class="nowrap">{% if behind[e.id] %}<span class="tag warn" title="{{ behind[e.id] | join(', ') }}">{{ behind[e.id] | length }} behind</span>{% elif cs.startswith('outdated') %}<span class="tag warn">Outdated</span>{% elif cs.startswith('latest') %}<span class="tag ok">Latest</span>{% else %}<span class="muted">–</span>{% endif %}</td>
       <td>{{ e.os }}</td><td class="mono">{{ e.ip }}</td>
-      <td class="ts nowrap">{{ e.last_connected.isoformat() if e.last_connected else '' }}</td>
+      <td class="nowrap">{% if e.last_connected %}<span class="seen" data-t="{{ e.last_connected.isoformat() }}"></span>{% else %}–{% endif %}</td>
       <td>{{ e.policy }}</td>
     </tr>
     {% else %}
