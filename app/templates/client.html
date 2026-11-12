@@ -48,13 +48,15 @@
 {% endfor %}
 </section>
 {% if patterns %}
-<div class="tablewrap" style="max-height:none;margin-top:16px">
+<h2>Exact pattern versions <span class="muted" style="font-size:13px;font-weight:500">from the product console API · latest = newest across all clients</span></h2>
+<div class="tablewrap" style="max-height:none">
 <table class="patterns"><thead><tr><th>Component</th><th>Latest</th><th>On latest</th><th style="width:40%"></th><th>Behind</th></tr></thead><tbody>
 {% for r in patterns %}
 <tr title="{% for v, n in r.versions.items() %}{{ v }}: {{ n }}&#10;{% endfor %}">
-  <td>{{ r.name }}</td><td class="mono">{{ r.latest or '–' }}</td><td class="num">{{ r.current }}</td>
+  <td>{{ r.name }}</td><td class="mono">{{ r.latest or '–' }}</td>
+  <td class="num"><a class="cnt" href="/endpoints?client={{ client.id }}&component={{ r.name | urlencode }}&filter=component_current">{{ r.current }}</a></td>
   <td><span class="vbar"><i style="width:{{ (100 * r.current / r.total) | round(1) if r.total else 0 }}%"></i></span></td>
-  <td class="num {{ 'badtxt' if r.behind }}">{{ r.behind }}</td>
+  <td class="num {{ 'badtxt' if r.behind }}"><a class="cnt" href="/endpoints?client={{ client.id }}&component={{ r.name | urlencode }}&filter=component_behind">{{ r.behind }}</a></td>
 </tr>
 {% endfor %}
 </tbody></table>

@@ -215,7 +215,8 @@ def _cstate(e: Endpoint) -> str:
     return collector.component_state({"component_version": e.component_version, "update_status": e.update_status})
 
 
-def _filtered(s, client_id: int | None, protection: str, flt: str, agent_status: str, version: str):
+def _filtered(s, client_id: int | None, protection: str, flt: str, agent_status: str, version: str,
+              component: str = ""):
     stmt = select(Endpoint, Client.name).join(Client).where(Client.enabled.is_(True))
     if client_id:
         stmt = stmt.where(Endpoint.client_id == client_id)
@@ -226,12 +227,21 @@ def _filtered(s, client_id: int | None, protection: str, flt: str, agent_status:
     if version:
         stmt = stmt.where(Endpoint.agent_version == version)
     pred = FILTERS.get(flt, FILTERS["all"])[1]
+    if component:
+        latest = reports.global_latest(s)
+        if flt == "component_current":
+            pred = lambda e: component in (e.components or {}) and component not in collector.components_behind(e.components, latest)
+        else:
+            pred = lambda e: component in collector.components_behind(e.components, latest)
     rows = [(e, cname) for e, cname in s.execute(stmt.order_by(Client.name, Endpoint.name)).all() if pred(e)]
     return rows
 
 
-def _list_title(client_name, protection, flt, agent_status, version):
-    parts = [FILTERS.get(flt, FILTERS["all"])[0]]
+def _list_title(client_name, protection, flt, agent_status, version, component=""):
+    if component:
+        parts = [f"{component}: " + ("on latest" if flt == "component_current" else "behind latest")]
+    else:
+        parts = [FILTERS.get(flt, FILTERS["all"])[0]]
     if protection:
         parts.append(PROT_NAMES.get(protection, protection))
     if agent_status:
@@ -243,13 +253,13 @@ def _list_title(client_name, protection, flt, agent_status, version):
 
 @app.get("/endpoints", response_class=HTMLResponse)
 def endpoint_list(request: Request, client: int | None = None, protection: str = "", filter: str = "all",
-                  agent_status: str = "", version: str = ""):
+                  agent_status: str = "", version: str = "", component: str = ""):
     """Drill-down: every count on the dashboard links here with its filter."""
     require_login(request)
     with SessionLocal() as s:
         c = s.get(Client, client) if client else None
-        rows = _filtered(s, client, protection, filter, agent_status, version)
-        title, scope = _list_title(c.name if c else None, protection, filter, agent_status, version)
+        rows = _filtered(s, client, protection, filter, agent_status, version, component)
+        title, scope = _list_title(c.name if c else None, protection, filter, agent_status, version, component)
         return templates.TemplateResponse(request, "endpoints.html", {
             "rows": rows, "title": title, "scope": scope, "client": c, "multi": c is None,
             "csv_url": "/endpoints.csv?" + str(request.query_params),
@@ -259,12 +269,12 @@ def endpoint_list(request: Request, client: int | None = None, protection: str =
 
 @app.get("/endpoints.csv")
 def endpoint_list_csv(request: Request, client: int | None = None, protection: str = "", filter: str = "all",
-                      agent_status: str = "", version: str = ""):
+                      agent_status: str = "", version: str = "", component: str = ""):
     require_login(request)
     import csv
     import io
     with SessionLocal() as s:
-        rows = _filtered(s, client, protection, filter, agent_status, version)
+        rows = _filtered(s, client, protection, filter, agent_status, version, component)
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["Client", "Endpoint", "Protection", "Status", "Agent version", "Agent version status", "Patterns",

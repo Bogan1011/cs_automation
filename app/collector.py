@@ -206,6 +206,8 @@ def _component_counts(endpoints: list[dict]) -> dict[str, dict[str, int]]:
     out: dict[str, Counter] = {}
     for e in endpoints:
         for comp, ver in (e.get("components") or {}).items():
+            if comp.startswith("_"):
+                continue
             out.setdefault(comp, Counter())[ver] += 1
     return {c: dict(sorted(v.items(), key=lambda kv: version_key(kv[0]), reverse=True)) for c, v in sorted(out.items())}
 
@@ -222,8 +224,11 @@ def latest_components(summaries: list[dict]) -> dict[str, str]:
 
 
 def components_behind(components: dict | None, latest: dict[str, str]) -> list[str]:
-    return sorted(c for c, v in (components or {}).items()
-                  if c in latest and version_key(v) < version_key(latest[c]))
+    comps = components or {}
+    behind = {c for c, v in comps.items()
+              if not c.startswith("_") and c in latest and version_key(str(v)) < version_key(latest[c])}
+    behind.update(comps.get("_outdated") or [])  # SWP's own latest=false flags
+    return sorted(behind)
 
 
 def pattern_status(summary: dict, latest: dict[str, str]) -> list[dict]:
@@ -294,11 +299,8 @@ def collect_client(session, client: Client, v1: VisionOneClient | None = None) -
     except Exception as exc:  # optional source; never fail the poll
         connector_errors["swp"] = str(exc)[:300]
         log.warning("%s: SWP patterns unavailable: %s", client.name, exc)
-    try:
-        exact.update(fetch_apex_components(client))
-    except Exception as exc:
-        connector_errors["apex"] = str(exc)[:300]
-        log.warning("%s: Apex One patterns unavailable: %s", client.name, exc)
+    # Apex One: ProductAgents (the only path this key type allows) carries no pattern versions
+    # (checked on Bandhan 2026-11-12), so it is not polled. fetch_apex_components stays for later.
 
     now = utcnow()
     rows = [normalize_endpoint(i, now) for i in raw_endpoints]
@@ -316,7 +318,7 @@ def collect_client(session, client: Client, v1: VisionOneClient | None = None) -
     summary = summarize(rows)
     summary["unmanaged"] = unmanaged
     summary["connector_errors"] = connector_errors
-    summary["exact_patterns_from"] = sorted(k for k in ("swp", "apex") if getattr(client, f"{k}_url", "") and k not in connector_errors)
+    summary["exact_patterns_from"] = ["swp"] if client.swp_url and "swp" not in connector_errors else []
 
     session.execute(delete(Endpoint).where(Endpoint.client_id == client.id))
     session.add_all(Endpoint(client_id=client.id, **r) for r in rows)
@@ -333,9 +335,36 @@ def fetch_swp_components(client: Client) -> dict[str, dict[str, str]]:
     out = {}
     with SWPClient(client.swp_url, crypto.decrypt(client.swp_key_enc)) as swp:
         for comp in swp.list_computers():
-            versions = extract_components(comp.get("securityUpdates") or {})
-            for k in computer_key(comp):
-                out[k] = versions
+            versions = swp_versions(comp)
+            if versions:
+                for k in computer_key(comp):
+                    out[k] = versions
+    return out
+
+
+def swp_versions(computer: dict) -> dict:
+    """securityUpdates.antiMalware[] = {name, version, platform, latest} -> {label: version}.
+
+    Platform-specific components get the platform in the label (Windows and Linux builds of the
+    same pattern have different version lines). Components SWP itself flags latest=false are
+    listed under "_outdated" so they count as behind even before another client shows a newer one.
+    """
+    out: dict = {}
+    outdated = []
+    su = computer.get("securityUpdates") or {}
+    for section, entries in su.items():
+        if not isinstance(entries, list):
+            continue
+        for e in entries:
+            if not isinstance(e, dict) or not e.get("name") or e.get("version") in (None, ""):
+                continue
+            plat = str(e.get("platform") or "")
+            label = str(e["name"]).strip() + (f" ({plat})" if plat and plat != "All Platforms" else "")
+            out[label] = str(e["version"])
+            if e.get("latest") is False or str(e.get("latest")).lower() == "false":
+                outdated.append(label)
+    if outdated:
+        out["_outdated"] = sorted(outdated)
     return out
 
 

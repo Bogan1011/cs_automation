@@ -238,3 +238,27 @@ def test_exact_patterns_from_console_api_are_merged(monkeypatch):
         rows = collector.pattern_status(reports.latest_summary(s, cid).summary, latest)
         ssa = next(r for r in rows if r["name"] == "Smart Scan Agent Pattern")
         assert (ssa["current"], ssa["behind"]) == (1, 1)
+
+
+def test_swp_versions_real_shape_and_drilldown(monkeypatch):
+    from app import reports
+    comp = {"hostName": "BL-SRV-DB01", "securityUpdates": {
+        "antiMalware": [
+            {"name": "Virus Pattern", "version": "21.435.00", "platform": "All Platforms", "latest": True},
+            {"name": "Anti-Malware Engine", "version": "26.530.1002", "platform": "Windows 64-bit", "latest": False},
+        ],
+        "updateStatus": {"status": "warning", "statusMessage": "Out-of-Date"}, "lastChanged": 1}}
+    v = collector.swp_versions(comp)
+    assert v == {"Virus Pattern": "21.435.00", "Anti-Malware Engine (Windows 64-bit)": "26.530.1002",
+                 "_outdated": ["Anti-Malware Engine (Windows 64-bit)"]}
+    assert collector.components_behind(v, {"Virus Pattern": "21.435.00"}) == ["Anti-Malware Engine (Windows 64-bit)"]
+
+    cid = make_client()
+    monkeypatch.setattr(collector, "fetch_swp_components", lambda client: {"bl-srv-db01": v})
+    collect(cid)
+    with TestClient(app) as http:
+        http.post("/login", data={"username": "admin", "password": "pw"})
+        page = http.get(f"/endpoints?client={cid}&component=Anti-Malware+Engine+(Windows+64-bit)&filter=component_behind")
+        assert "BL-SRV-DB01" in page.text and "<b>1</b> endpoints" in page.text
+        cp = http.get(f"/clients/{cid}")
+        assert "Exact pattern versions" in cp.text and "<td>_outdated" not in cp.text
