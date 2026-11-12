@@ -100,6 +100,8 @@ def main(argv=None):
     si.add_argument("--name", required=True)
     pr = sub.add_parser("apex-probe", help="try Apex One API paths and summarise their fields")
     pr.add_argument("--name", required=True)
+    dt = sub.add_parser("detail", help="fetch single-endpoint detail for one SEP and one SWP agent (names hidden)")
+    dt.add_argument("--name", required=True)
     sub.add_parser("poll", help="run one collection for all clients now")
     args = p.parse_args(argv)
 
@@ -168,6 +170,27 @@ def main(argv=None):
                         content = data.get("result_content", data) if isinstance(data, dict) else data
                         items = content if isinstance(content, list) else [content]
                         print(inspect_fields(items))
+                    except Exception as exc:
+                        print(f"  failed: {exc}")
+        elif args.cmd == "detail":
+            from .collector import classify_protection
+            c = get(args.name)
+            with VisionOneClient(crypto.decrypt(c.api_key_enc), c.region) as v1:
+                items = v1.list_endpoints()
+                picked = {}
+                for it in items:
+                    p = classify_protection(it)
+                    if p in ("SEP", "SWP") and p not in picked:
+                        picked[p] = it
+                for p, it in picked.items():
+                    print(f"===== {p}: list record patterns")
+                    print(json.dumps((it.get("eppAgent") or {}).get("patterns"), indent=1)[:3000])
+                    print(f"===== {p}: detail record")
+                    try:
+                        d = v1.get_endpoint(it["agentGuid"])
+                        print(inspect_fields([d]))
+                        print(f"----- {p}: detail eppAgent.patterns")
+                        print(json.dumps((d.get("eppAgent") or {}).get("patterns"), indent=1)[:6000])
                     except Exception as exc:
                         print(f"  failed: {exc}")
         elif args.cmd == "inspect":

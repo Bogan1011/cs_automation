@@ -64,3 +64,7 @@ class VisionOneClient:
     # --- Endpoint Security: endpoint inventory incl. Standard Endpoint Protection / Server & Workload Protection
     def list_endpoints(self) -> list[dict]:
         return list(self._paginate("/v3.0/endpointSecurity/endpoints", params={"top": 200}))
+
+    def get_endpoint(self, agent_guid: str) -> dict:
+        """Single-endpoint detail; may carry more than the list (e.g. pattern versions)."""
+        return self._get(f"/v3.0/endpointSecurity/endpoints/{agent_guid}")
