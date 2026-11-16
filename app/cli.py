@@ -102,6 +102,9 @@ def main(argv=None):
     pr.add_argument("--name", required=True)
     dt = sub.add_parser("detail", help="fetch single-endpoint detail for one SEP and one SWP agent (names hidden)")
     dt.add_argument("--name", required=True)
+    ex = sub.add_parser("explain", help="show every status field for named endpoints, to match console categories")
+    ex.add_argument("--name", required=True, help="client name")
+    ex.add_argument("endpoints", nargs="+", help="endpoint names exactly as the console shows them")
     po = sub.add_parser("poll", help="run one collection now (all clients, or one with --name)")
     po.add_argument("--name", help="only this client (as shown by list-clients)")
     po.add_argument("--all-details", action="store_true",
@@ -196,6 +199,33 @@ def main(argv=None):
                         print(json.dumps((d.get("eppAgent") or {}).get("patterns"), indent=1)[:6000])
                     except Exception as exc:
                         print(f"  failed: {exc}")
+        elif args.cmd == "explain":
+            from .collector import classify_protection, inventory_flags, normalize_endpoint
+            c = get(args.name)
+            want = {e.strip().lower() for e in args.endpoints}
+            with VisionOneClient(crypto.decrypt(c.api_key_enc), c.region) as v1:
+                items = v1.list_endpoints()
+                found = [it for it in items if str(it.get("endpointName") or it.get("displayName") or "").lower() in want]
+                print(f"{len(items)} records from the API; matched {len(found)} of {len(want)} names")
+                missing = want - {str(it.get("endpointName") or it.get("displayName") or "").lower() for it in found}
+                if missing:
+                    print("Not returned by the API at all: " + ", ".join(sorted(missing)))
+                for it in found:
+                    n = normalize_endpoint(it)
+                    print(f"\n===== {it.get('endpointName')}  ->  dashboard: {classify_protection(it)}, flags {inventory_flags(n)}")
+                    try:
+                        detail = v1.get_endpoint(it["agentGuid"])
+                    except Exception as exc:
+                        detail = {}
+                        print(f"  detail failed: {exc}")
+                    for label, rec in (("list", it), ("detail", detail)):
+                        for path, val in _flatten(rec):
+                            leaf = path.split(".")[-1].replace("[]", "")
+                            if "patterns[]" in path or "engines[]" in path or val in (None, "", []):
+                                continue
+                            if SENSITIVE.search(leaf) and not SAFE.search(leaf) and not leaf.lower().startswith("os"):
+                                continue
+                            print(f"  {label:6} {path} = {str(val)[:120]}")
         elif args.cmd == "inspect":
             c = get(args.name)
             with VisionOneClient(crypto.decrypt(c.api_key_enc), c.region) as v1:

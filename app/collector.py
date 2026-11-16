@@ -535,7 +535,7 @@ def inventory(endpoints, summary: dict | None) -> dict:
     prot = Counter(getattr(e, "protection", "") for e in endpoints)
     return {
         "immediate": [("deploy_failed", INVENTORY_FLAGS["deploy_failed"], flags["deploy_failed"])],
-        "recommended": [(k, INVENTORY_FLAGS[k], flags[k]) for k in ("agent_update", "sensor_disabled", "sensor_update")]
+        "recommended": [(k, INVENTORY_FLAGS[k], flags[k]) for k in ("sensor_disabled", "sensor_update")]
                        + [("unmanaged", "Unmanaged endpoints", (summary or {}).get("unmanaged", 0))],
         "deployment": [("all", "All managed endpoints", len(endpoints)),
                        ("SEP", "Standard Endpoint Protection", prot["SEP"]),

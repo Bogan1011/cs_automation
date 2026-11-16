@@ -282,7 +282,7 @@ def test_home_page_and_inventory_counts():
     assert dep["all"] == len(eps) == dep["SEP"] + dep["SWP"] + dep["Sensor only"]
     rec = {k: n for k, _, n in inv["recommended"]}
     assert rec["unmanaged"] == 4
-    assert rec["agent_update"] == sum(e.agent_version_status == "updateRecommended" and e.protection != "Sensor only" for e in eps)
+    assert "agent_update" not in rec  # the console has no such group, so the panel doesn't either
     assert collector.inventory_flags({"protection": "SEP", "agent_version_status": "updateFailed",
                                       "raw": {"edrSensor": {"status": "disabled"}}}) == ["deploy_failed", "sensor_disabled"]
 
@@ -305,3 +305,18 @@ def test_sync_all_button_and_cli_poll_one_client(capsys, monkeypatch):
     assert f"{name}: ok" in capsys.readouterr().out
     with pytest.raises(SystemExit):
         cli.main(["poll", "--name", "No Such Client"])
+
+
+def test_explain_lists_status_fields_without_identifiers(capsys, monkeypatch):
+    from app import cli
+    real = collector.VisionOneClient
+    monkeypatch.setattr(cli, "VisionOneClient",
+                        lambda key, region, **kw: real("secret-key", region, transport=v1_transport()))
+    a = make_client()
+    with SessionLocal() as s:
+        name = s.get(Client, a).name
+    cli.main(["explain", "--name", name, "BL-SRV-DB01", "NOT-THERE"])
+    out = capsys.readouterr().out
+    assert "BL-SRV-DB01  ->  dashboard: SWP" in out and "eppAgent.status" in out
+    assert "Not returned by the API at all: not-there" in out
+    assert "10.0.0.2" not in out  # IPs stay hidden
