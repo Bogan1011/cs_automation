@@ -363,7 +363,7 @@ def test_sep_widget_and_unmanaged_without_guid_counted():
 
 
 SWP_COMPUTERS = [
-    {"ID": 1, "hostName": "aldcpffadb01", "displayName": "", "platform": "Microsoft Windows Server 2019",
+    {"ID": 1, "hostName": "aldcpffadb01", "displayName": "", "lastIPUsed": "10.151.62.20", "platform": "Microsoft Windows Server 2019",
      "lastAgentCommunication": 1794462396845, "agentVersion": "20.0.3.11080",
      "computerStatus": {"agentStatus": "error", "agentStatusMessages": ["Send Policy Failed", "Offline"]},
      "securityUpdates": {"updateStatus": {"statusMessage": "Out-of-Date"}}},
@@ -393,7 +393,12 @@ def test_c1ws_computer_status_widget_and_issue_page():
         assert "Send Policy Failed" in page  # top issues on the widget
         assert "Online / offline" in page
         crit_page = http.get(f"/clients/{a}/c1ws?status=critical").text
-        assert "aldcpffadb01" in crit_page and "Send Policy Failed" in crit_page and "web01" not in crit_page
+        assert "aldcpffadb01" in crit_page and "Send Policy Failed · Offline" in crit_page and "web01" not in crit_page
+        assert "What&#39;s wrong" not in crit_page and "What's wrong" not in crit_page
+        off = http.get(f"/clients/{a}/c1ws?status=offline").text
+        assert "aldcpffadb01" in off and "web01" not in off and "vm-stopped" not in off  # managed + offline only
+        on = http.get(f"/clients/{a}/c1ws?status=online").text
+        assert "web01" in on and "aldcpffaap01" in on and "aldcpffadb01" not in on
         only = http.get(f"/clients/{a}/c1ws?status=all&issue=Software+Changes+Detected").text
         assert "aldcpffaap01" in only and "aldcpffadb01" not in only
         assert "style.css?v=" in page  # cache-busted assets

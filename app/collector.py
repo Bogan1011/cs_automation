@@ -375,6 +375,12 @@ def refresh_details(session, client: Client, v1, rows: list[dict], now: datetime
 C1WS_STATUS = {"error": "critical", "warning": "warning", "active": "managed", "inactive": "unmanaged"}
 
 
+def c1ws_online(status: str, issues: list[str]) -> bool:
+    """Managed agents are online unless the console says Offline or the VM is stopped."""
+    text = " ".join(issues).lower()
+    return status != "unmanaged" and "offline" not in text and "stopped" not in text
+
+
 def c1ws_computer(c: dict) -> dict:
     """One computer as the SWP console's Computer Status widget sees it, with the reasons behind it."""
     cs = c.get("computerStatus") or {}
@@ -389,6 +395,7 @@ def c1ws_computer(c: dict) -> dict:
         last = None
     upd = ((c.get("securityUpdates") or {}).get("updateStatus") or {}).get("statusMessage") or ""
     return {"name": str(c.get("displayName") or c.get("hostName") or ""), "host": str(c.get("hostName") or ""),
+            "ip": str(c.get("lastIPUsed") or ""), "online": c1ws_online(status, msgs),
             "status": status, "issues": [str(m) for m in msgs], "platform": str(c.get("platform") or ""),
             "agent_version": str(c.get("agentVersion") or ""), "last_seen": last, "updates": upd}
 

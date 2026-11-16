@@ -195,29 +195,40 @@ def _connectivity(endpoints) -> dict:
 
 
 C1WS_LABELS = {"critical": "Critical", "warning": "Warning", "managed": "Managed", "unmanaged": "Unmanaged"}
+C1WS_TABS = {**C1WS_LABELS, "online": "Online", "offline": "Offline", "all": "All"}
 
 
 @app.get("/clients/{client_id}/c1ws", response_class=HTMLResponse)
 def c1ws_page(request: Request, client_id: int, status: str = "critical", issue: str = ""):
-    """Server & Workload computers by status, with the exact problem on each one."""
+    """Server & Workload computers by status: one compact row each, with the problem on that computer."""
     require_login(request)
-    from collections import Counter
     with SessionLocal() as s:
         c = s.get(Client, client_id) or _404()
         data = c.c1ws or {}
-        computers = data.get("computers") or []
-        status = status if status in C1WS_LABELS or status == "all" else "critical"
-        rows = [x for x in computers if status == "all" or x["status"] == status]
-        issues = Counter(i for x in rows for i in (x.get("issues") or []))
-        if issue:
-            rows = [x for x in rows if issue in (x.get("issues") or [])]
-        order = {"critical": 0, "warning": 1, "managed": 2, "unmanaged": 3}
-        rows.sort(key=lambda x: (order.get(x["status"], 9), x["name"].lower()))
-        return templates.TemplateResponse(request, "c1ws.html", {
-            "client": {"id": c.id, "name": c.name}, "rows": rows, "status": status, "issue": issue,
-            "issues": issues.most_common(), "counts": data.get("counts") or {}, "labels": C1WS_LABELS,
-            "fetched_at": data.get("fetched_at"), "error": data.get("error"),
-        })
+    computers = [dict(x, online=x.get("online", collector.c1ws_online(x["status"], x.get("issues") or [])))
+                 for x in data.get("computers") or []]
+    status = status if status in C1WS_TABS else "critical"
+    tab_counts = {k: sum(1 for x in computers if _c1ws_match(x, k)) for k in C1WS_TABS}
+    rows = [x for x in computers if _c1ws_match(x, status)]
+    if issue:
+        rows = [x for x in rows if issue in (x.get("issues") or [])]
+    order = {"critical": 0, "warning": 1, "managed": 2, "unmanaged": 3}
+    rows.sort(key=lambda x: (order.get(x["status"], 9), x["name"].lower()))
+    return templates.TemplateResponse(request, "c1ws.html", {
+        "client": {"id": c.id, "name": c.name}, "rows": rows, "status": status, "issue": issue,
+        "tabs": C1WS_TABS, "tab_counts": tab_counts, "labels": C1WS_LABELS,
+        "fetched_at": data.get("fetched_at"), "error": data.get("error"),
+    })
+
+
+def _c1ws_match(x: dict, tab: str) -> bool:
+    if tab == "all":
+        return True
+    if tab == "online":
+        return x["online"]
+    if tab == "offline":
+        return x["status"] != "unmanaged" and not x["online"]  # managed agents that are offline
+    return x["status"] == tab
 
 
 def _404():

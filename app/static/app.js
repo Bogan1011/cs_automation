@@ -224,3 +224,32 @@ function startHome() {
     idle(b);
   });
 }
+
+// Simple search + paging for a server-rendered table (rows marked data-row)
+function startPagedTable(id) {
+  const $ = x => document.getElementById(x);
+  const rows = [...document.querySelectorAll(`#${id} tbody tr[data-row]`)];
+  const search = $('search'), none = $('none');
+  let page = 0, size = 50;
+  try { const v = localStorage.getItem('rows-' + id); if (v != null) { size = Number(v); $('size').value = v; } } catch (e) {}
+  function render(reset) {
+    if (reset) page = 0;
+    const q = search.value.trim().toLowerCase();
+    const match = rows.filter(r => !q || r.textContent.toLowerCase().includes(q));
+    const pages = size ? Math.max(1, Math.ceil(match.length / size)) : 1;
+    page = Math.min(page, pages - 1);
+    const from = size ? page * size : 0, to = size ? from + size : match.length;
+    const vis = new Set(match.slice(from, to));
+    rows.forEach(r => r.hidden = !vis.has(r));
+    if (none) none.hidden = match.length > 0 || !rows.length;
+    $('range').textContent = match.length ? `${from + 1}–${Math.min(to, match.length)} of ${match.length}` : '';
+    $('pageno').textContent = `Page ${page + 1} of ${pages}`;
+    $('prev').disabled = page === 0; $('next').disabled = page >= pages - 1;
+  }
+  let t; search.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => render(true), 120); });
+  $('size').addEventListener('change', e => { size = Number(e.target.value); try { localStorage.setItem('rows-' + id, e.target.value); } catch (x) {} render(true); });
+  $('prev').addEventListener('click', () => { page--; render(); scrollTo({top: 0, behavior: reduceMotion ? 'auto' : 'smooth'}); });
+  $('next').addEventListener('click', () => { page++; render(); scrollTo({top: 0, behavior: reduceMotion ? 'auto' : 'smooth'}); });
+  addEventListener('keydown', e => { if (e.key === '/' && document.activeElement !== search) { e.preventDefault(); search.focus(); } });
+  render(true);
+}

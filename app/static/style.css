@@ -373,3 +373,12 @@ i.ok{background:var(--ok)}i.bad{background:var(--bad)}i.orange{background:#ff9f0
 .spill i{width:8px;height:8px;border-radius:50%;background:var(--muted)}
 td.iss{white-space:normal;min-width:260px}
 .itag{display:inline-block;margin:2px 6px 2px 0;padding:3px 9px;border-radius:8px;font-size:12.5px;background:color-mix(in srgb,#ff9f0a 14%,transparent);color:color-mix(in srgb,#ff9f0a 75%,var(--fg))}
+
+/* Compact one-line rows (Server & Workload computer list) */
+table.compact td{padding:8px 14px;font-size:14px}
+table.compact td.name{font-weight:600}
+td.iss1{max-width:460px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:color-mix(in srgb,#ff9f0a 70%,var(--fg))}
+.dot.st-critical{background:var(--bad)}.dot.st-warning{background:#ff9f0a}.dot.st-managed{background:var(--ok)}.dot.st-unmanaged{background:#7d8597}
+.on-txt{color:var(--ok);font-weight:600}.off-txt{color:var(--bad);font-weight:600}
+.st-online i{background:var(--ok)!important}.st-offline i{background:var(--bad)!important}
+.toolbar .ichip.clear{white-space:nowrap}
