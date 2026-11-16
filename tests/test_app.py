@@ -402,3 +402,26 @@ def test_c1ws_computer_status_widget_and_issue_page():
         only = http.get(f"/clients/{a}/c1ws?status=all&issue=Software+Changes+Detected").text
         assert "aldcpffaap01" in only and "aldcpffadb01" not in only
         assert "style.css?v=" in page  # cache-busted assets
+
+
+def test_online_status_comes_from_product_consoles(monkeypatch):
+    from app.apexone import ApexClient
+    apex = ApexClient("https://x.manage.trendmicro.com", "app", "key", transport=httpx.MockTransport(
+        lambda req: httpx.Response(200, json={"result_content": [
+            {"host_name": "BL-LAP-001", "ip_address_list": "10.1.1.1,10.1.1.2", "connection_status": "Offline"},
+            {"host_name": "BL-LAP-APEX", "connection_status": "Online"}]})))
+    st = collector.collect_apex_status(None, apex)
+    assert st["counts"] == {"online": 1, "offline": 1} and st["agents"][0]["ip"] == "10.1.1.1"
+    a = make_client()
+    with SessionLocal() as s:
+        s.get(Client, a).apex_status = st
+        s.commit()
+    collect(a)  # Vision One says BL-LAP-001 is on; Apex One says offline, and Apex One wins
+    with SessionLocal() as s:
+        e = s.scalars(select(Endpoint).where(Endpoint.client_id == a, Endpoint.name == "BL-LAP-001")).one()
+        assert e.online is False
+    with TestClient(app) as http:
+        http.post("/login", data={"username": "admin", "password": "pw"})
+        page = http.get(f"/clients/{a}").text
+        assert "From the Apex One console" in page
+        assert "Connect the Server &amp; Workload API" in page  # no SWP data for this client

@@ -88,18 +88,23 @@
   {# --- Online / offline for SEP and SWP --- #}
   <article class="card widget">
     <header><span class="wicon net" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M2 9a14.5 14.5 0 0 1 20 0"/><path d="M12 19.5h.01"/></svg></span>
-      <div><h3>Online / offline</h3><span class="wsub">Agent connection right now</span></div></header>
+      <div><h3>Online / offline</h3><span class="wsub">Checked in each product&#39;s own console</span></div></header>
     {% for prot, label in (('SEP', 'Standard Endpoint Protection'), ('SWP', 'Server & Workload Protection')) %}
     {% set k = conn[prot] %}
+    {% if prot == 'SEP' %}{% set lon = ep ~ '&protection=SEP&filter=online' %}{% set loff = ep ~ '&protection=SEP&filter=offline' %}{% set lall = ep ~ '&protection=SEP' %}
+    {% else %}{% set cu = '/clients/' ~ client.id ~ '/c1ws?status=' %}{% set lon = cu ~ 'online' %}{% set loff = cu ~ 'offline' %}{% set lall = cu ~ 'all' %}{% endif %}
     <div class="conn">
-      <div class="conn-top"><span>{{ label }}</span><a href="{{ ep }}&protection={{ prot }}"><b>{{ k.total }}</b> agents</a></div>
-      <div class="sbar">{% if k.total %}
-        <i class="ok" style="flex:{{ k.online }}"></i><i class="bad" style="flex:{{ k.offline }}"></i><i class="warn" style="flex:{{ k.stale }}"></i>{% endif %}</div>
+      <div class="conn-top"><span>{{ label }}</span>{% if k.source %}<a href="{{ lall }}"><b>{{ k.total }}</b> agents</a>{% endif %}</div>
+      {% if k.source %}
+      <div class="sbar">{% if k.total %}<i class="ok" style="flex:{{ k.online }}"></i><i class="bad" style="flex:{{ k.offline - (k.stale or 0) }}"></i><i class="warn" style="flex:{{ k.stale or 0 }}"></i>{% endif %}</div>
       <div class="conn-leg">
-        <a href="{{ ep }}&protection={{ prot }}&filter=online"><i class="ok"></i>Online <b>{{ k.online }}</b></a>
-        <a href="{{ ep }}&protection={{ prot }}&filter=offline"><i class="bad"></i>Offline <b>{{ k.offline + k.stale }}</b></a>
-        <a href="{{ ep }}&protection={{ prot }}&filter=stale"><i class="warn"></i>7d+ <b>{{ k.stale }}</b></a>
+        <a href="{{ lon }}"><i class="ok"></i>Online <b>{{ k.online }}</b></a>
+        <a href="{{ loff }}"><i class="bad"></i>Offline <b>{{ k.offline }}</b></a>
+        {% if k.stale is not none %}<span class="chipnote"><i class="warn"></i>7d+ <b>{{ k.stale }}</b></span>{% endif %}
       </div>
+      <span class="wsub">From the {{ k.source }}{% if k.error %} · <span class="err">last fetch failed</span>{% endif %}</span>
+      {% elif k.error %}<p class="err small">{{ 'Apex One' if prot == 'SEP' else 'Server & Workload' }} API failed: {{ k.error }}</p>
+      {% else %}<p class="muted small">{% if prot == 'SEP' %}Connect the Apex One API (read-only use) to show this:<br><code>python -m app.cli set-apex --name "{{ client.name }}" --url https://&lt;your-id&gt;.manage.trendmicro.com --app-id &lt;Application ID&gt;</code>{% else %}Connect the Server &amp; Workload API to show this:<br><code>python -m app.cli set-swp --name "{{ client.name }}" --url https://workload.in-1.cloudone.trendmicro.com</code>{% endif %}</p>{% endif %}
     </div>
     {% endfor %}
   </article>

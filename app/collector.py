@@ -422,6 +422,54 @@ def collect_c1ws(client: Client, swp=None) -> dict | None:
             "computers": computers}
 
 
+def collect_apex_status(client: Client, apex=None) -> dict | None:
+    """SEP agent connection status from the Apex One console itself (Vision One's own online flag can
+    reflect the XDR sensor rather than the Apex One agent). Read-only GET of ProductAgents."""
+    if apex is None and not (client.apex_url and client.apex_app_id and client.apex_key_enc):
+        return None
+    from .apexone import ApexClient
+    own = apex is None
+    try:
+        apex = apex or ApexClient(client.apex_url, client.apex_app_id, crypto.decrypt(client.apex_key_enc))
+        agents = []
+        for a in apex.product_agents():
+            ips = a.get("ip_address_list") or ""
+            ips = ", ".join(ips) if isinstance(ips, list) else str(ips)
+            agents.append({"host": str(a.get("host_name") or "").strip(), "ip": ips.split(",")[0].strip(),
+                           "online": str(a.get("connection_status") or "").lower() == "online",
+                           "build": str(a.get("product_build_number") or ""),
+                           "folder": str(a.get("folder_path") or "")})
+    except Exception as exc:
+        log.warning("%s: Apex One status failed: %s", getattr(client, "name", "Apex"), exc)
+        return {"error": str(exc)[:300], "fetched_at": utcnow().isoformat()}
+    finally:
+        if own and apex is not None:
+            apex.close()
+    on = sum(1 for a in agents if a["online"])
+    return {"fetched_at": utcnow().isoformat(), "counts": {"online": on, "offline": len(agents) - on},
+            "agents": agents}
+
+
+def _host_keys(name: str) -> list[str]:
+    n = str(name or "").strip().lower()
+    return [n, n.split(".")[0]] if n else []
+
+
+def console_online(apex: dict | None, c1ws: dict | None) -> dict[str, dict[str, bool]]:
+    """{'SEP': {host: online}, 'SWP': {host: online}} from each product's own console."""
+    out = {"SEP": {}, "SWP": {}}
+    for a in (apex or {}).get("agents") or []:
+        for k in _host_keys(a["host"]):
+            out["SEP"][k] = a["online"]
+    for c in (c1ws or {}).get("computers") or []:
+        if c["status"] == "unmanaged":
+            continue
+        online = c.get("online", c1ws_online(c["status"], c.get("issues") or []))
+        for k in _host_keys(c.get("host")) + _host_keys(c.get("name")):
+            out["SWP"][k] = online
+    return out
+
+
 VIRUS_PATTERNS = ("Smart Scan Agent Pattern", "Virus Pattern", "Virus Pattern (64-bit)")
 
 
@@ -480,16 +528,33 @@ def collect_client(session, client: Client, v1: VisionOneClient | None = None) -
             r["components"] = comps
         if actions:
             r["raw"] = {**r["raw"], "recommendedActions": actions}
-    summary = summarize(rows)
-    summary["unmanaged"] = unmanaged
-    others = [sn.summary for sn in (_latest_snapshot(session, c.id) for c in session.scalars(
-        select(Client).where(Client.enabled.is_(True), Client.id != client.id))) if sn]
+    # Online/offline comes from each product's own console when connected (Apex One for SEP,
+    # Server & Workload for SWP): Vision One's flag can reflect the XDR sensor instead of the agent.
     c1ws = collect_c1ws(client)
     if c1ws is not None:
         if "error" in c1ws and client.c1ws and client.c1ws.get("computers"):
             c1ws = {**client.c1ws, "error": c1ws["error"]}  # keep the last good list, show the error
         client.c1ws = c1ws
-        summary["c1ws"] = c1ws.get("counts")
+    apex = collect_apex_status(client)
+    if apex is not None:
+        if "error" in apex and client.apex_status and client.apex_status.get("agents"):
+            apex = {**client.apex_status, "error": apex["error"]}
+        client.apex_status = apex
+    by_console = console_online(client.apex_status, client.c1ws)
+    for r in rows:
+        known = by_console.get(r["protection"]) or {}
+        for k in _host_keys(r["name"]):
+            if k in known:
+                r["online"] = known[k]
+                r["agent_status"] = "online" if known[k] else "offline"
+                if known[k]:
+                    r["stale"] = False
+                break
+    summary = summarize(rows)
+    summary["c1ws"] = (client.c1ws or {}).get("counts")
+    summary["unmanaged"] = unmanaged
+    others = [sn.summary for sn in (_latest_snapshot(session, c.id) for c in session.scalars(
+        select(Client).where(Client.enabled.is_(True), Client.id != client.id))) if sn]
     summary["sep_widget"] = sep_widget(rows, latest_components(others + [summary]).get("SEP", {}))
     summary["exact_versions"] = {"have": sum(1 for c, _ in exact.values() if c), "of": sum(1 for r in rows if r["protection"] in ("SEP", "SWP"))}
 

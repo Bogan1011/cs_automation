@@ -166,7 +166,7 @@ def client_page(request: Request, client_id: int):
             "inv": collector.inventory(endpoints, card["summary"]),
             "sep": sep,
             "c1ws": c.c1ws, "c1ws_top": _c1ws_top(c.c1ws), "swp_connected": bool(c.swp_url and c.swp_key_enc),
-            "conn": _connectivity(endpoints),
+            "conn": _connectivity(c),
             "flags": {e.id: collector.inventory_flags(e) for e in endpoints},
             "patterns": collector.pattern_status(card["summary"] or {}, latest),
             "behind": {e.id: collector.components_behind(e.components, latest.get(e.protection, {})) for e in endpoints},
@@ -183,14 +183,29 @@ def _c1ws_top(data: dict | None, n: int = 4) -> list[tuple[str, int]]:
     return Counter(i for x in comps if x["status"] in ("critical", "warning") for i in x.get("issues") or []).most_common(n)
 
 
-def _connectivity(endpoints) -> dict:
-    """Online / offline / not seen 7+ days for SEP and SWP agents."""
+def _connectivity(c: Client) -> dict:
+    """Online / offline per product, from each product's own console (not Vision One's sensor view)."""
+    from datetime import datetime as _dt
     out = {}
-    for prot in ("SEP", "SWP"):
-        eps = [e for e in endpoints if e.protection == prot]
-        out[prot] = {"total": len(eps), "online": sum(1 for e in eps if e.online and not e.stale),
-                     "offline": sum(1 for e in eps if not e.online and not e.stale),
-                     "stale": sum(1 for e in eps if e.stale)}
+    apex = c.apex_status or {}
+    if apex.get("agents") is not None:
+        agents = apex["agents"]
+        on = sum(1 for a in agents if a["online"])
+        out["SEP"] = {"source": "Apex One console", "total": len(agents), "online": on, "offline": len(agents) - on,
+                      "stale": None, "error": apex.get("error")}
+    else:
+        out["SEP"] = {"source": None, "error": apex.get("error")}
+    c1 = c.c1ws or {}
+    if c1.get("computers") is not None:
+        managed = [x for x in c1["computers"] if x["status"] != "unmanaged"]
+        online = [x for x in managed if x.get("online", collector.c1ws_online(x["status"], x.get("issues") or []))]
+        cutoff = utcnow() - timedelta(days=settings.stale_days)
+        stale = sum(1 for x in managed if x not in online and x.get("last_seen")
+                    and _dt.fromisoformat(x["last_seen"]) < cutoff)
+        out["SWP"] = {"source": "Server & Workload console", "total": len(managed), "online": len(online),
+                      "offline": len(managed) - len(online), "stale": stale, "error": c1.get("error")}
+    else:
+        out["SWP"] = {"source": None, "error": c1.get("error")}
     return out
 
 

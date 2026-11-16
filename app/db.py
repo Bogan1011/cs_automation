@@ -27,6 +27,8 @@ class Client(Base):
     swp_key_enc: Mapped[str] = mapped_column(Text, default="")
     # Latest Server & Workload computer status list from the SWP API (replaced every poll, not kept as history)
     c1ws: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Latest Apex One (SEP) agent connection list from the Apex Central API (replaced every poll)
+    apex_status: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     apex_url: Mapped[str] = mapped_column(String(300), default="")
     apex_app_id: Mapped[str] = mapped_column(String(200), default="")
     apex_key_enc: Mapped[str] = mapped_column(Text, default="")
