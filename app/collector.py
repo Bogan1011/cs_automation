@@ -371,6 +371,39 @@ def refresh_details(session, client: Client, v1, rows: list[dict], now: datetime
     return {g: (cache[g].components or {}, cache[g].actions or "") for g in wanted if g in cache}
 
 
+VIRUS_PATTERNS = ("Smart Scan Agent Pattern", "Virus Pattern", "Virus Pattern (64-bit)")
+
+
+def _latest_snapshot(session, client_id: int):
+    return session.scalars(select(Snapshot).where(Snapshot.client_id == client_id)
+                           .order_by(Snapshot.taken_at.desc()).limit(1)).first()
+
+
+def virus_state(e, latest_sep: dict[str, str]) -> str:
+    """Standard Endpoint Protection 'Antivirus pattern compliance' bucket for one endpoint:
+    offline7 (not seen for 7+ days; left out of the %), compliant, outdated or unknown.
+    Uses the exact virus pattern version (Smart Scan Agent Pattern for smart-scan agents) against the newest
+    one seen; falls back to Trend's own componentVersion verdict when the exact version isn't loaded yet."""
+    get = (lambda k: e.get(k)) if isinstance(e, dict) else (lambda k: getattr(e, k, None))
+    if get("stale"):
+        return "offline7"
+    comps = get("components") or {}
+    for name in VIRUS_PATTERNS:
+        if name in comps and name in latest_sep:
+            return "compliant" if version_key(str(comps[name])) >= version_key(latest_sep[name]) else "outdated"
+    state = component_state({"component_version": get("component_version"), "update_status": get("update_status")})
+    return {"latest": "compliant", "outdated": "outdated"}.get(state, "unknown")
+
+
+def sep_widget(rows, latest_sep: dict[str, str]) -> dict:
+    sep = [r for r in rows if ((r.get("protection") if isinstance(r, dict) else r.protection) == "SEP")]
+    c = Counter(virus_state(r, latest_sep) for r in sep)
+    rated = c["compliant"] + c["outdated"]
+    return {"managed": len(sep), "compliant": c["compliant"], "outdated": c["outdated"],
+            "offline7": c["offline7"], "unknown": c["unknown"],
+            "pct": round(100 * c["compliant"] / rated, 1) if rated else None}
+
+
 def collect_client(session, client: Client, v1: VisionOneClient | None = None) -> dict:
     own = v1 is None
     v1 = v1 or VisionOneClient(crypto.decrypt(client.api_key_enc), client.region)
@@ -378,9 +411,12 @@ def collect_client(session, client: Client, v1: VisionOneClient | None = None) -
         raw_endpoints = v1.list_endpoints()
         now = utcnow()
         rows = [normalize_endpoint(i, now) for i in raw_endpoints]
-        rows = list({r["agent_guid"]: r for r in rows}.values())  # de-duplicate by guid
-        # Only "All managed endpoints" (SEP + SWP + Sensor only) count, as in the console.
+        # Unmanaged devices (SWP cloud-connector VMs, Entra ID and AD computers) often have no agent GUID,
+        # so de-duplicating them by GUID collapsed hundreds into a few. Count every record, as the console does.
         unmanaged = sum(1 for r in rows if r["protection"] == "Unmanaged")
+        rows = [r for r in rows if r["protection"] != "Unmanaged"]
+        rows = list({r["agent_guid"]: r for r in rows}.values())  # de-duplicate managed agents by guid
+        # Only "All managed endpoints" (SEP + SWP + Sensor only) count, as in the console.
         rows = [r for r in rows if r["protection"] != "Unmanaged"]
         exact = refresh_details(session, client, v1, rows, now)
     finally:
@@ -395,6 +431,9 @@ def collect_client(session, client: Client, v1: VisionOneClient | None = None) -
             r["raw"] = {**r["raw"], "recommendedActions": actions}
     summary = summarize(rows)
     summary["unmanaged"] = unmanaged
+    others = [sn.summary for sn in (_latest_snapshot(session, c.id) for c in session.scalars(
+        select(Client).where(Client.enabled.is_(True), Client.id != client.id))) if sn]
+    summary["sep_widget"] = sep_widget(rows, latest_components(others + [summary]).get("SEP", {}))
     summary["exact_versions"] = {"have": sum(1 for c, _ in exact.values() if c), "of": sum(1 for r in rows if r["protection"] in ("SEP", "SWP"))}
 
     session.execute(delete(Endpoint).where(Endpoint.client_id == client.id))

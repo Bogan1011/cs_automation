@@ -1,5 +1,5 @@
 import hmac
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import logging
 import re
 import threading
@@ -16,7 +16,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from . import collector, outlook, reports
 from .config import settings
-from .db import Client, Endpoint, SessionLocal, Snapshot, init_db
+from .db import Client, Endpoint, SessionLocal, Snapshot, init_db, utcnow
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 BASE = Path(__file__).parent
@@ -142,9 +142,17 @@ def client_page(request: Request, client_id: int):
         history = s.scalars(select(Snapshot).where(Snapshot.client_id == c.id)
                             .order_by(Snapshot.taken_at.desc()).limit(288)).all()
         card = _client_card(s, c, latest)
+        sep = dict((card["summary"] or {}).get("sep_widget") or {})
+        if sep:
+            week = s.scalars(select(Snapshot).where(Snapshot.client_id == c.id,
+                                                    Snapshot.taken_at <= utcnow() - timedelta(days=7))
+                             .order_by(Snapshot.taken_at.desc()).limit(1)).first()
+            old_pct = ((week.summary if week else {}).get("sep_widget") or {}).get("pct")
+            sep["change"] = round(sep["pct"] - old_pct, 1) if sep.get("pct") is not None and old_pct is not None else None
         return templates.TemplateResponse(request, "client.html", {
             "client": card, "endpoints": endpoints,
             "inv": collector.inventory(endpoints, card["summary"]),
+            "sep": sep,
             "flags": {e.id: collector.inventory_flags(e) for e in endpoints},
             "patterns": collector.pattern_status(card["summary"] or {}, latest),
             "behind": {e.id: collector.components_behind(e.components, latest.get(e.protection, {})) for e in endpoints},
@@ -237,6 +245,9 @@ FILTERS = {
     "patterns_outdated": ("Patterns outdated", lambda e: _cstate(e) == "outdated"),
     "patterns_unknown": ("Pattern status unknown", lambda e: _cstate(e) == "unknown"),
     "agent_behind": ("Agents needing an update", lambda e: e.behind_latest),
+    "sep_compliant": ("With compliant virus patterns", None),
+    "sep_outdated": ("With outdated virus patterns", None),
+    "sep_offline7": ("Offline for 7 days", None),
     **{k: (label, (lambda k: lambda e: k in collector.inventory_flags(e))(k))
        for k, label in collector.INVENTORY_FLAGS.items()},
 }
@@ -259,6 +270,11 @@ def _filtered(s, client_id: int | None, protection: str, flt: str, agent_status:
     if version:
         stmt = stmt.where(Endpoint.agent_version == version)
     pred = FILTERS.get(flt, FILTERS["all"])[1]
+    if flt.startswith("sep_"):
+        latest_sep = reports.global_latest(s).get("SEP", {})
+        want = flt[4:]
+        stmt = stmt.where(Endpoint.protection == "SEP")
+        pred = lambda e: collector.virus_state(e, latest_sep) == want
     if component:
         latest = reports.global_latest(s)
         def behind(e):

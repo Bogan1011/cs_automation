@@ -328,3 +328,35 @@ def test_explain_lists_status_fields_without_identifiers(capsys, monkeypatch):
     assert "BL-SRV-DB01  ->  dashboard: SWP" in out and "eppAgent.status" in out
     assert "Not returned by the API at all: not-there" in out
     assert "10.0.0.2" not in out  # IPs stay hidden
+
+
+def test_sep_widget_and_unmanaged_without_guid_counted():
+    rows = [
+        {"protection": "SEP", "stale": True, "components": {}},
+        {"protection": "SEP", "stale": False, "components": {"Smart Scan Agent Pattern": "18.100.00"}},
+        {"protection": "SEP", "stale": False, "components": {"Smart Scan Agent Pattern": "18.099.00"}},
+        {"protection": "SEP", "stale": False, "components": {}, "component_version": "latestVersion"},
+        {"protection": "SWP", "stale": False, "components": {}},
+    ]
+    w = collector.sep_widget(rows, {"Smart Scan Agent Pattern": "18.100.00"})
+    assert (w["managed"], w["compliant"], w["outdated"], w["offline7"]) == (4, 2, 1, 1)
+    assert w["pct"] == 66.7  # offline-7-days agents are left out of the %, as in the console
+
+    # Entra ID / AD / connector devices often have no agent GUID: every record must still count as unmanaged
+    extra = [{"endpointName": "SAME-NAME", "eppAgent": {"protectionManager": "Microsoft Entra ID"}} for _ in range(3)]
+    a = make_client()
+    with SessionLocal() as s:
+        c = s.get(Client, a)
+        from tests.fixtures import ENDPOINTS
+        with VisionOneClient("secret-key", c.region, transport=httpx.MockTransport(
+                lambda req: httpx.Response(200, json={"items": ENDPOINTS + extra}) if req.url.path.endswith("/endpoints")
+                else httpx.Response(200, json={}))) as v1:
+            summary = collector.collect_client(s, c, v1)
+        s.commit()
+    assert summary["unmanaged"] == 4 + 3
+    assert summary["sep_widget"]["managed"] == summary["sep"]
+    with TestClient(app) as http:
+        http.post("/login", data={"username": "admin", "password": "pw"})
+        page = http.get(f"/clients/{a}").text
+        assert "Antivirus pattern compliance" in page and "filter=sep_outdated" in page
+        assert http.get(f"/endpoints?client={a}&filter=sep_offline7").status_code == 200
