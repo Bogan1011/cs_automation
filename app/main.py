@@ -164,13 +164,23 @@ def refresh_client(request: Request, client_id: int):
     with SessionLocal() as s:
         c = s.get(Client, client_id) or _404()
         try:
-            with _poll_lock:  # don't race the 5-minute scheduler
+            with _poll_lock, collector.poll_guard():  # don't race the scheduler or a CLI run
                 summary = collector.collect_client(s, c)
                 s.commit()
         except Exception as exc:
             s.rollback()
             return JSONResponse({"ok": False, "error": str(exc)[:500]}, status_code=502)
     return {"ok": True, "summary": summary}
+
+
+@app.post("/api/sync")
+def sync_all(request: Request):
+    """'Sync now' on the Home page: run the 5-minute job immediately for every client."""
+    require_login(request)
+    with _poll_lock:
+        results = collector.collect_all()
+    return {"ok": not any(r.startswith("FAILED") for _, r in results),
+            "results": [{"client": n, "result": r} for n, r in results]}
 
 
 def _filename(client: Client) -> str:

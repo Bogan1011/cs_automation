@@ -102,7 +102,10 @@ def main(argv=None):
     pr.add_argument("--name", required=True)
     dt = sub.add_parser("detail", help="fetch single-endpoint detail for one SEP and one SWP agent (names hidden)")
     dt.add_argument("--name", required=True)
-    sub.add_parser("poll", help="run one collection for all clients now")
+    po = sub.add_parser("poll", help="run one collection now (all clients, or one with --name)")
+    po.add_argument("--name", help="only this client (as shown by list-clients)")
+    po.add_argument("--all-details", action="store_true",
+                    help="fetch exact pattern versions for every endpoint now instead of a batch per poll")
     args = p.parse_args(argv)
 
     if args.cmd == "gen-key":
@@ -208,8 +211,15 @@ def main(argv=None):
                 print(json.dumps(items[0] if items else {}, indent=2))
         elif args.cmd == "poll":
             from .collector import collect_all
-            collect_all()
-            print("Done")
+            from .config import settings
+            if args.all_details:
+                settings.detail_batch = 1_000_000
+            failed = False
+            for name, result in collect_all(args.name):
+                print(f"{name}: {result}")
+                failed |= result.startswith("FAILED")
+            if failed:
+                raise SystemExit(1)
 
 
 if __name__ == "__main__":

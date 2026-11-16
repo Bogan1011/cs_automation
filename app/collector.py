@@ -1,5 +1,6 @@
 """Pull data from every enabled client and store the latest state + a summary snapshot."""
 import logging
+from contextlib import contextmanager
 import re
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -444,20 +445,54 @@ def fetch_apex_components(client: Client) -> dict[str, dict[str, str]]:
     return out
 
 
-def collect_all() -> None:
-    with SessionLocal() as session:
-        clients = session.scalars(select(Client).where(Client.enabled.is_(True))).all()
+POLL_LOCK_ID = 7_101_001  # Postgres advisory lock shared by the scheduler and the CLI
+
+
+@contextmanager
+def poll_guard():
+    """Let a manual run and the 5-minute scheduler (separate processes) take turns instead of racing.
+    The lock is held on its own connection, so session commits can't release it early."""
+    from .db import engine
+    if engine.dialect.name != "postgresql":
+        yield
+        return
+    with engine.connect() as conn:
+        conn.exec_driver_sql(f"SELECT pg_advisory_lock({POLL_LOCK_ID})")
+        try:
+            yield
+        finally:
+            conn.exec_driver_sql(f"SELECT pg_advisory_unlock({POLL_LOCK_ID})")
+
+
+def collect_all(only: str | None = None) -> list[tuple[str, str]]:
+    """Poll every enabled client (or just the one named `only`). Returns [(client, result)]."""
+    results: list[tuple[str, str]] = []
+    with poll_guard(), SessionLocal() as session:
+        _collect_all(session, only, results)
+    return results
+
+
+def _collect_all(session, only: str | None, results: list) -> None:
+    if True:
+        stmt = select(Client).where(Client.enabled.is_(True))
+        if only:
+            stmt = stmt.where(Client.name == only)
+        clients = session.scalars(stmt).all()
+        if only and not clients:
+            raise SystemExit(f"No enabled client named {only!r}. See: python -m app.cli list-clients")
         for client in clients:
             try:
                 summary = collect_client(session, client)
                 session.commit()
                 log.info("%s: %s endpoints", client.name, summary["total"])
+                results.append((client.name, f"ok, {summary['total']} managed endpoints"))
             except Exception as exc:  # one client failing must not stop the others
                 session.rollback()
                 client = session.get(Client, client.id)
                 client.last_poll_at, client.last_poll_ok, client.last_error = utcnow(), False, str(exc)[:1000]
                 session.commit()
                 log.exception("%s: poll failed", client.name)
+                results.append((client.name, f"FAILED: {str(exc)[:200]}"))
         cutoff = datetime.now(timezone.utc) - timedelta(days=settings.retention_days)
         session.execute(delete(Snapshot).where(Snapshot.taken_at < cutoff))
         session.commit()

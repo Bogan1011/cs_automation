@@ -191,11 +191,11 @@ function startClient(clientId) {
   render(true);
 
   document.getElementById('refresh').addEventListener('click', async e => {
-    const b = e.currentTarget; busy(b, 'Refreshing…');
+    const b = e.currentTarget; busy(b, 'Syncing…');
     try {
       const d = await (await api(`/api/clients/${b.dataset.id}/refresh`, {method: 'POST'})).json();
-      if (d.ok) location.reload(); else { toast('Refresh failed: ' + esc(d.error), 8000); idle(b); }
-    } catch (err) { toast('Refresh failed: ' + esc(err.message), 8000); idle(b); }
+      if (d.ok) location.reload(); else { toast('Sync failed: ' + esc(d.error), 8000); idle(b); }
+    } catch (err) { toast('Sync failed: ' + esc(err.message), 8000); idle(b); }
   });
   document.getElementById('report').addEventListener('click', async e => {
     const b = e.currentTarget; busy(b, 'Building report…');
@@ -209,4 +209,18 @@ function startClient(clientId) {
 
   // Keep the page live: reload every 5 minutes unless the user is typing in search
   setInterval(() => { if (document.activeElement !== search) location.reload(); }, 300000);
+}
+
+function startHome() {
+  document.getElementById('syncall')?.addEventListener('click', async e => {
+    const b = e.currentTarget; busy(b, 'Syncing all clients…');
+    toast('Syncing every client. This can take a minute or two.');
+    try {
+      const d = await (await api('/api/sync', {method: 'POST'})).json();
+      const bad = (d.results || []).filter(r => r.result.startsWith('FAILED'));
+      if (!bad.length) { toast('✓ All clients synced.', 2500); setTimeout(() => location.reload(), 700); return; }
+      toast(bad.map(r => `<b>${esc(r.client)}</b>: ${esc(r.result)}`).join('<br>'), 15000);
+    } catch (err) { toast('Sync failed: ' + esc(err.message), 8000); }
+    idle(b);
+  });
 }

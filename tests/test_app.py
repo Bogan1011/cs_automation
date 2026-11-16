@@ -285,3 +285,23 @@ def test_home_page_and_inventory_counts():
     assert rec["agent_update"] == sum(e.agent_version_status == "updateRecommended" and e.protection != "Sensor only" for e in eps)
     assert collector.inventory_flags({"protection": "SEP", "agent_version_status": "updateFailed",
                                       "raw": {"edrSensor": {"status": "disabled"}}}) == ["deploy_failed", "sensor_disabled"]
+
+
+def test_sync_all_button_and_cli_poll_one_client(capsys, monkeypatch):
+    from app import cli
+    real = collector.VisionOneClient
+    monkeypatch.setattr(collector, "VisionOneClient",
+                        lambda key, region, **kw: real("secret-key", region, transport=v1_transport()))
+    a = make_client()
+    with TestClient(app) as http:
+        assert http.post("/api/sync").status_code == 401
+        http.post("/login", data={"username": "admin", "password": "pw"})
+        assert "Sync all now" in http.get("/").text
+        r = http.post("/api/sync").json()
+        assert r["ok"] and r["results"][0]["result"].startswith("ok")
+    with SessionLocal() as s:
+        name = s.get(Client, a).name
+    cli.main(["poll", "--name", name, "--all-details"])
+    assert f"{name}: ok" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        cli.main(["poll", "--name", "No Such Client"])

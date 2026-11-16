@@ -46,6 +46,16 @@ docker compose exec app python -m app.cli test --name "Bandhan Life"     # check
 docker compose exec app python -m app.cli poll                           # first pull right away
 ```
 
+### Sync now instead of waiting 5 minutes
+
+```bash
+./scripts/force_refresh.sh                  # all clients
+./scripts/force_refresh.sh "Bandhan Life"   # one client
+./scripts/force_refresh.sh --all-details    # also fetch every exact pattern version now
+```
+
+The dashboard has the same thing as buttons: **Sync all now** on Home and **Sync now** on each client tab. A manual sync and the 5-minute job never run at the same time; one waits for the other.
+
 Open `http://127.0.0.1:8000` on the server. To reach it from other machines on the LAN, set `BIND_ADDR` in `.env` to the server's LAN IP, for example `192.168.1.67`, then run `docker compose up -d`. For anything beyond a trusted LAN, put Nginx or Caddy with HTTPS in front.
 
 Other commands: `list-clients`, `edit-client --name X --region sg --report-to a@b.com --enabled no`, `set-key --name X` (rotate key), and `dump --name X` (prints one raw endpoint record, which is useful for checking field names).
