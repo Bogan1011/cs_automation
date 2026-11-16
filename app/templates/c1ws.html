@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ client.name }} · Server &amp; Workload computers{% endblock %}
+{% block content %}
+<div class="bar head">
+  <div>
+    <a href="/clients/{{ client.id }}" class="back">‹ {{ client.name }}</a>
+    <h1>Server &amp; Workload computers</h1>
+    <p class="muted small">From the Server &amp; Workload Protection console · updated <span class="ts">{{ fetched_at or 'never' }}</span>
+      {% if error %}<span class="err">· last fetch failed: {{ error }}</span>{% endif %}</p>
+  </div>
+</div>
+
+<nav class="stabs">
+  {% for k, label in labels.items() %}
+  <a href="?status={{ k }}" class="st-{{ k }}{{ ' on' if status == k }}"><i></i>{{ label }} <b>{{ counts.get(k, 0) }}</b></a>
+  {% endfor %}
+  <a href="?status=all" class="{{ 'on' if status == 'all' }}">All <b>{{ counts.values() | sum }}</b></a>
+</nav>
+
+{% if issues %}
+<section class="card issues">
+  <h2>What's wrong{% if status != 'all' %} on {{ labels.get(status, status) | lower }} computers{% endif %}</h2>
+  <div class="ichips">
+    {% if issue %}<a class="ichip clear" href="?status={{ status }}">✕ Show all issues</a>{% endif %}
+    {% for name, n in issues %}
+    <a class="ichip{{ ' on' if issue == name }}" href="?status={{ status }}&issue={{ name | urlencode }}"><span>{{ name }}</span><b>{{ n }}</b></a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<div class="tablewrap list">
+<table id="c1ws"><thead><tr><th>Computer</th><th>Status</th><th>Issue</th><th>Platform</th><th>Agent</th><th>Security updates</th><th>Last seen</th></tr></thead><tbody>
+{% for x in rows %}
+<tr>
+  <td class="name"><div class="nm">{{ x.name }}</div>{% if x.host and x.host != x.name %}<div class="sub muted">{{ x.host }}</div>{% endif %}</td>
+  <td><span class="spill st-{{ x.status }}"><i></i>{{ labels.get(x.status, x.status) }}</span></td>
+  <td class="iss">{% for i in x.issues %}<span class="itag">{{ i }}</span>{% else %}<span class="muted">–</span>{% endfor %}</td>
+  <td>{{ x.platform or '–' }}</td>
+  <td class="mono">{{ x.agent_version or '–' }}</td>
+  <td>{% if x.updates == 'Up-to-Date' %}<span class="tag ok">Up to date</span>{% elif x.updates %}<span class="tag warn">{{ x.updates }}</span>{% else %}<span class="muted">–</span>{% endif %}</td>
+  <td class="nowrap">{% if x.last_seen %}<span class="seen" data-t="{{ x.last_seen }}"></span>{% else %}–{% endif %}</td>
+</tr>
+{% else %}
+<tr><td colspan="7" class="muted">{% if not fetched_at %}No data yet. Connect the Server &amp; Workload API (python -m app.cli set-swp) and sync.{% else %}No computers in this view.{% endif %}</td></tr>
+{% endfor %}
+</tbody></table>
+</div>
+<p class="muted small">{{ rows | length }} computers shown.</p>
+{% endblock %}

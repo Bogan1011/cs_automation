@@ -31,6 +31,18 @@ def nav_clients():
 
 
 templates.env.globals["nav_clients"] = nav_clients
+
+
+def _asset_version() -> str:
+    """Changes whenever a static file changes, so browsers never keep an old stylesheet after an update."""
+    import hashlib
+    h = hashlib.sha1()
+    for f in sorted((BASE / "static").glob("*.*")):
+        h.update(f.read_bytes())
+    return h.hexdigest()[:10]
+
+
+templates.env.globals["asset_v"] = _asset_version()
 scheduler = BackgroundScheduler(timezone="UTC")
 _poll_lock = threading.Lock()
 
@@ -153,12 +165,58 @@ def client_page(request: Request, client_id: int):
             "client": card, "endpoints": endpoints,
             "inv": collector.inventory(endpoints, card["summary"]),
             "sep": sep,
+            "c1ws": c.c1ws, "c1ws_top": _c1ws_top(c.c1ws), "swp_connected": bool(c.swp_url and c.swp_key_enc),
+            "conn": _connectivity(endpoints),
             "flags": {e.id: collector.inventory_flags(e) for e in endpoints},
             "patterns": collector.pattern_status(card["summary"] or {}, latest),
             "behind": {e.id: collector.components_behind(e.components, latest.get(e.protection, {})) for e in endpoints},
             "history": [{"t": h.taken_at.isoformat(), "total": h.summary.get("total", 0),
                          "online": h.summary.get("online", 0)} for h in reversed(history)],
             "graph_configured": settings.graph_configured, "report_to": c.report_to,
+        })
+
+
+def _c1ws_top(data: dict | None, n: int = 4) -> list[tuple[str, int]]:
+    """Most common problems on critical and warning computers."""
+    from collections import Counter
+    comps = (data or {}).get("computers") or []
+    return Counter(i for x in comps if x["status"] in ("critical", "warning") for i in x.get("issues") or []).most_common(n)
+
+
+def _connectivity(endpoints) -> dict:
+    """Online / offline / not seen 7+ days for SEP and SWP agents."""
+    out = {}
+    for prot in ("SEP", "SWP"):
+        eps = [e for e in endpoints if e.protection == prot]
+        out[prot] = {"total": len(eps), "online": sum(1 for e in eps if e.online and not e.stale),
+                     "offline": sum(1 for e in eps if not e.online and not e.stale),
+                     "stale": sum(1 for e in eps if e.stale)}
+    return out
+
+
+C1WS_LABELS = {"critical": "Critical", "warning": "Warning", "managed": "Managed", "unmanaged": "Unmanaged"}
+
+
+@app.get("/clients/{client_id}/c1ws", response_class=HTMLResponse)
+def c1ws_page(request: Request, client_id: int, status: str = "critical", issue: str = ""):
+    """Server & Workload computers by status, with the exact problem on each one."""
+    require_login(request)
+    from collections import Counter
+    with SessionLocal() as s:
+        c = s.get(Client, client_id) or _404()
+        data = c.c1ws or {}
+        computers = data.get("computers") or []
+        status = status if status in C1WS_LABELS or status == "all" else "critical"
+        rows = [x for x in computers if status == "all" or x["status"] == status]
+        issues = Counter(i for x in rows for i in (x.get("issues") or []))
+        if issue:
+            rows = [x for x in rows if issue in (x.get("issues") or [])]
+        order = {"critical": 0, "warning": 1, "managed": 2, "unmanaged": 3}
+        rows.sort(key=lambda x: (order.get(x["status"], 9), x["name"].lower()))
+        return templates.TemplateResponse(request, "c1ws.html", {
+            "client": {"id": c.id, "name": c.name}, "rows": rows, "status": status, "issue": issue,
+            "issues": issues.most_common(), "counts": data.get("counts") or {}, "labels": C1WS_LABELS,
+            "fetched_at": data.get("fetched_at"), "error": data.get("error"),
         })
 
 

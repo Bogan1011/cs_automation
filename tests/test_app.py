@@ -360,3 +360,40 @@ def test_sep_widget_and_unmanaged_without_guid_counted():
         page = http.get(f"/clients/{a}").text
         assert "Antivirus pattern compliance" in page and "filter=sep_outdated" in page
         assert http.get(f"/endpoints?client={a}&filter=sep_offline7").status_code == 200
+
+
+SWP_COMPUTERS = [
+    {"ID": 1, "hostName": "aldcpffadb01", "displayName": "", "platform": "Microsoft Windows Server 2019",
+     "lastAgentCommunication": 1794462396845, "agentVersion": "20.0.3.11080",
+     "computerStatus": {"agentStatus": "error", "agentStatusMessages": ["Send Policy Failed", "Offline"]},
+     "securityUpdates": {"updateStatus": {"statusMessage": "Out-of-Date"}}},
+    {"ID": 2, "hostName": "aldcpffaap01", "computerStatus": {"agentStatus": "warning", "agentStatusMessages": ["Software Changes Detected"]}},
+    {"ID": 3, "hostName": "web01", "computerStatus": {"agentStatus": "active", "agentStatusMessages": ["Managed (Online)"]}},
+    {"ID": 4, "hostName": "vm-stopped", "computerStatus": {"agentStatus": "inactive", "agentStatusMessages": ["Unmanaged (VM Stopped)"]}},
+]
+
+
+def test_c1ws_computer_status_widget_and_issue_page():
+    from app.swp import SWPClient
+    swp = SWPClient("https://workload.in-1.cloudone.trendmicro.com", "k", transport=httpx.MockTransport(
+        lambda req: httpx.Response(200, json={"computers": SWP_COMPUTERS})))
+    data = collector.collect_c1ws(None, swp)
+    assert data["counts"] == {"critical": 1, "warning": 1, "managed": 1, "unmanaged": 1}
+    crit = next(c for c in data["computers"] if c["status"] == "critical")
+    assert crit["issues"] == ["Send Policy Failed", "Offline"] and crit["last_seen"].startswith("2026")
+    a = make_client()
+    collect(a)
+    with SessionLocal() as s:
+        s.get(Client, a).c1ws = data
+        s.commit()
+    with TestClient(app) as http:
+        http.post("/login", data={"username": "admin", "password": "pw"})
+        page = http.get(f"/clients/{a}").text
+        assert "Computer status (C1WS)" in page and f"/clients/{a}/c1ws?status=critical" in page
+        assert "Send Policy Failed" in page  # top issues on the widget
+        assert "Online / offline" in page
+        crit_page = http.get(f"/clients/{a}/c1ws?status=critical").text
+        assert "aldcpffadb01" in crit_page and "Send Policy Failed" in crit_page and "web01" not in crit_page
+        only = http.get(f"/clients/{a}/c1ws?status=all&issue=Software+Changes+Detected").text
+        assert "aldcpffaap01" in only and "aldcpffadb01" not in only
+        assert "style.css?v=" in page  # cache-busted assets

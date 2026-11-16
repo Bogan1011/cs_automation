@@ -371,6 +371,50 @@ def refresh_details(session, client: Client, v1, rows: list[dict], now: datetime
     return {g: (cache[g].components or {}, cache[g].actions or "") for g in wanted if g in cache}
 
 
+# --- Server & Workload Protection (C1WS) computer status, from the SWP console API -----------------
+C1WS_STATUS = {"error": "critical", "warning": "warning", "active": "managed", "inactive": "unmanaged"}
+
+
+def c1ws_computer(c: dict) -> dict:
+    """One computer as the SWP console's Computer Status widget sees it, with the reasons behind it."""
+    cs = c.get("computerStatus") or {}
+    msgs = cs.get("agentStatusMessages") or []
+    if isinstance(msgs, str):
+        msgs = [m.strip() for m in msgs.split(",") if m.strip()]
+    status = C1WS_STATUS.get(str(cs.get("agentStatus") or "").lower(), "unmanaged")
+    last = c.get("lastAgentCommunication")
+    try:
+        last = datetime.fromtimestamp(int(last) / 1000, tz=timezone.utc).isoformat() if last else None
+    except (TypeError, ValueError):
+        last = None
+    upd = ((c.get("securityUpdates") or {}).get("updateStatus") or {}).get("statusMessage") or ""
+    return {"name": str(c.get("displayName") or c.get("hostName") or ""), "host": str(c.get("hostName") or ""),
+            "status": status, "issues": [str(m) for m in msgs], "platform": str(c.get("platform") or ""),
+            "agent_version": str(c.get("agentVersion") or ""), "last_seen": last, "updates": upd}
+
+
+def collect_c1ws(client: Client, swp=None) -> dict | None:
+    """{fetched_at, counts, computers} or {error} for clients with the SWP API connected; None otherwise."""
+    if swp is None and not (client.swp_url and client.swp_key_enc):
+        return None
+    name = client.name if client else "SWP"
+    from .swp import SWPClient
+    own = swp is None
+    try:
+        swp = swp or SWPClient(client.swp_url, crypto.decrypt(client.swp_key_enc))
+        computers = [c1ws_computer(c) for c in swp.list_computers()]
+    except Exception as exc:
+        log.warning("%s: SWP computer status failed: %s", name, exc)
+        return {"error": str(exc)[:300], "fetched_at": utcnow().isoformat()}
+    finally:
+        if own and swp is not None:
+            swp.close()
+    counts = Counter(c["status"] for c in computers)
+    return {"fetched_at": utcnow().isoformat(),
+            "counts": {k: counts[k] for k in ("critical", "warning", "managed", "unmanaged")},
+            "computers": computers}
+
+
 VIRUS_PATTERNS = ("Smart Scan Agent Pattern", "Virus Pattern", "Virus Pattern (64-bit)")
 
 
@@ -433,6 +477,12 @@ def collect_client(session, client: Client, v1: VisionOneClient | None = None) -
     summary["unmanaged"] = unmanaged
     others = [sn.summary for sn in (_latest_snapshot(session, c.id) for c in session.scalars(
         select(Client).where(Client.enabled.is_(True), Client.id != client.id))) if sn]
+    c1ws = collect_c1ws(client)
+    if c1ws is not None:
+        if "error" in c1ws and client.c1ws and client.c1ws.get("computers"):
+            c1ws = {**client.c1ws, "error": c1ws["error"]}  # keep the last good list, show the error
+        client.c1ws = c1ws
+        summary["c1ws"] = c1ws.get("counts")
     summary["sep_widget"] = sep_widget(rows, latest_components(others + [summary]).get("SEP", {}))
     summary["exact_versions"] = {"have": sum(1 for c, _ in exact.values() if c), "of": sum(1 for r in rows if r["protection"] in ("SEP", "SWP"))}
 

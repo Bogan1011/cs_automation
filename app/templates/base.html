@@ -6,7 +6,7 @@
 <link rel="icon" href="/static/brand/favicon.ico">
 <title>{% block title %}Centralised Vision One{% endblock %}</title>
 <script>try{const t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v={{ asset_v }}">
 </head>
 <body>
 <header class="top">
@@ -31,7 +31,7 @@
 </header>
 <main>{% block content %}{% endblock %}</main>
 <div id="msg" role="status" aria-live="polite"></div>
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v={{ asset_v }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

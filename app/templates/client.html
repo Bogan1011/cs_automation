@@ -18,35 +18,91 @@
   </div>
 </div>
 
-{% set sepq = '/endpoints?client=' ~ client.id ~ '&protection=SEP' %}
+{% macro donut(segs, size=132, stroke=14) %}
+  {% set total = segs | sum(attribute=1) %}
+  {% set ns = namespace(off=25) %}
+  <svg class="donut" viewBox="0 0 42 42" width="{{ size }}" height="{{ size }}" aria-hidden="true">
+    <circle cx="21" cy="21" r="15.915" fill="none" stroke="var(--line)" stroke-width="{{ stroke / 3.2 }}"/>
+    {% if total %}{% for cls, n in segs if n %}
+    {% set len = 100 * n / total %}
+    <circle class="seg {{ cls }}" cx="21" cy="21" r="15.915" fill="none" stroke-width="{{ stroke / 3.2 }}"
+      stroke-dasharray="{{ '%.3f' % len }} {{ '%.3f' % (100 - len) }}" stroke-dashoffset="{{ '%.3f' % ns.off }}"/>
+    {% set ns.off = ns.off - len %}
+    {% endfor %}{% endif %}
+  </svg>
+{% endmacro %}
+{% set ep = '/endpoints?client=' ~ client.id %}
 <section class="widgets">
-  <article class="card widget sepw">
-    <header><span class="wicon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/></svg></span>
-      <h3>Standard Endpoint Protection</h3></header>
+  {# --- Standard Endpoint Protection: antivirus pattern compliance --- #}
+  <article class="card widget">
+    <header><span class="wicon sep" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/></svg></span>
+      <div><h3>Standard Endpoint Protection</h3><span class="wsub">Antivirus pattern compliance</span></div></header>
     {% if sep %}
-    {% set pct = sep.pct %}
-    <div class="wbig">
-      <div class="ring" style="--p:{{ pct or 0 }}" title="Antivirus pattern compliance"><b>{{ '%.0f' % pct if pct is not none else '–' }}<small>%</small></b></div>
-      <div>
-        <div class="wtitle">Antivirus pattern compliance</div>
-        <div class="muted small">Average change (over 7 days):
-          {% if sep.change is not none %}<b class="{{ 'up' if sep.change > 0 else ('down' if sep.change < 0 else '') }}">{{ '%+.0f' % sep.change }}%</b>{% else %}<span title="Needs 7 days of history">–</span>{% endif %}</div>
+    <div class="whero">
+      <div class="dwrap">{{ donut([('ok', sep.compliant or 0), ('bad', sep.outdated or 0)]) }}
+        <div class="dcenter"><b>{{ '%.0f' % sep.pct if sep.pct is not none else '–' }}<small>%</small></b><span>compliant</span></div></div>
+      <div class="wside">
+        <div class="delta {{ 'up' if sep.change and sep.change > 0 else ('down' if sep.change and sep.change < 0 else '') }}">
+          {% if sep.change is not none %}{{ '▲' if sep.change > 0 else ('▼' if sep.change < 0 else '•') }} {{ '%+.0f' % sep.change }}%{% else %}–{% endif %}
+          <span>vs 7 days ago</span></div>
+        <a class="wtotal" href="{{ ep }}&protection=SEP"><b>{{ sep.managed }}</b><span>managed agents</span></a>
       </div>
     </div>
     {% set rated = (sep.compliant or 0) + (sep.outdated or 0) %}
-    <ul class="wlist">
-      <li><a href="{{ sepq }}"><span>Managed agents</span><b>{{ sep.managed }}</b></a></li>
-      <li class="sub"><a href="/endpoints?client={{ client.id }}&filter=sep_compliant"><span>With compliant virus patterns</span><b>{{ sep.compliant }}</b><em>{{ (100 * sep.compliant / rated) | round | int if rated else 0 }}%</em></a></li>
-      <li class="sub"><a href="/endpoints?client={{ client.id }}&filter=sep_outdated"><span>With outdated virus patterns</span><b class="{{ 'badtxt' if sep.outdated }}">{{ sep.outdated }}</b><em>{{ (100 * sep.outdated / rated) | round | int if rated else 0 }}%</em></a></li>
-      <li class="sub"><a href="/endpoints?client={{ client.id }}&filter=sep_offline7"><span>Offline for 7 days</span><b>{{ sep.offline7 }}</b></a></li>
-      {% if sep.unknown %}<li class="sub"><span><span>Pattern not reported yet</span><b class="muted">{{ sep.unknown }}</b></span></li>{% endif %}
-    </ul>
-    {% else %}
-    <p class="muted">Appears after the next sync.</p>
-    {% endif %}
+    <div class="tiles">
+      <a class="tile ok" href="{{ ep }}&filter=sep_compliant"><b>{{ sep.compliant }}</b><span>Compliant patterns</span><em>{{ (100 * sep.compliant / rated) | round | int if rated else 0 }}%</em></a>
+      <a class="tile bad" href="{{ ep }}&filter=sep_outdated"><b>{{ sep.outdated }}</b><span>Outdated patterns</span><em>{{ (100 * sep.outdated / rated) | round | int if rated else 0 }}%</em></a>
+      <a class="tile warn" href="{{ ep }}&filter=sep_offline7"><b>{{ sep.offline7 }}</b><span>Offline 7 days</span><em>not in %</em></a>
+    </div>
+    {% else %}<p class="muted">Appears after the next sync.</p>{% endif %}
   </article>
-  <article class="card widget soon"><header><h3>Server &amp; Workload Protection (C1WS)</h3></header><p class="muted">Coming next.</p></article>
-  <article class="card widget soon"><header><h3>Endpoint Inventory</h3></header><p class="muted">Coming next. The full inventory is below.</p></article>
+
+  {# --- Server & Workload Protection (C1WS): computer status --- #}
+  <article class="card widget">
+    <header><span class="wicon swp" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg></span>
+      <div><h3>Server &amp; Workload Protection</h3><span class="wsub">Computer status (C1WS)</span></div></header>
+    {% set cc = (c1ws or {}).get('counts') %}
+    {% if cc %}
+    {% set cu = '/clients/' ~ client.id ~ '/c1ws?status=' %}
+    <div class="whero">
+      <div class="dwrap">{{ donut([('bad', cc.critical), ('orange', cc.warning), ('ok', cc.managed), ('gray', cc.unmanaged)]) }}
+        <div class="dcenter"><b>{{ cc.values() | sum }}</b><span>computers</span></div></div>
+      <ul class="legend">
+        <li><a href="{{ cu }}critical"><i class="bad"></i><span>Critical</span><b>{{ cc.critical }}</b></a></li>
+        <li><a href="{{ cu }}warning"><i class="orange"></i><span>Warning</span><b>{{ cc.warning }}</b></a></li>
+        <li><a href="{{ cu }}managed"><i class="ok"></i><span>Managed</span><b>{{ cc.managed }}</b></a></li>
+        <li><a href="{{ cu }}unmanaged"><i class="gray"></i><span>Unmanaged</span><b>{{ cc.unmanaged }}</b></a></li>
+      </ul>
+    </div>
+    {% if c1ws_top %}
+    <div class="topiss"><span class="wsub">Top issues on critical &amp; warning computers</span>
+      {% for name, n in c1ws_top %}<a href="{{ cu }}all&issue={{ name | urlencode }}"><span>{{ name }}</span><b>{{ n }}</b></a>{% endfor %}
+    </div>
+    {% endif %}
+    {% if c1ws.error %}<p class="err small">Last fetch failed: {{ c1ws.error }}</p>{% endif %}
+    {% elif c1ws and c1ws.error %}<p class="err small">Server &amp; Workload API failed: {{ c1ws.error }}</p>
+    {% elif swp_connected %}<p class="muted">Appears after the next sync.</p>
+    {% else %}<p class="muted">Connect the Server &amp; Workload API to see computer status:<br><code>python -m app.cli set-swp --name "{{ client.name }}" --url https://workload.in-1.cloudone.trendmicro.com</code></p>{% endif %}
+  </article>
+
+  {# --- Online / offline for SEP and SWP --- #}
+  <article class="card widget">
+    <header><span class="wicon net" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M2 9a14.5 14.5 0 0 1 20 0"/><path d="M12 19.5h.01"/></svg></span>
+      <div><h3>Online / offline</h3><span class="wsub">Agent connection right now</span></div></header>
+    {% for prot, label in (('SEP', 'Standard Endpoint Protection'), ('SWP', 'Server & Workload Protection')) %}
+    {% set k = conn[prot] %}
+    <div class="conn">
+      <div class="conn-top"><span>{{ label }}</span><a href="{{ ep }}&protection={{ prot }}"><b>{{ k.total }}</b> agents</a></div>
+      <div class="sbar">{% if k.total %}
+        <i class="ok" style="flex:{{ k.online }}"></i><i class="bad" style="flex:{{ k.offline }}"></i><i class="warn" style="flex:{{ k.stale }}"></i>{% endif %}</div>
+      <div class="conn-leg">
+        <a href="{{ ep }}&protection={{ prot }}&filter=online"><i class="ok"></i>Online <b>{{ k.online }}</b></a>
+        <a href="{{ ep }}&protection={{ prot }}&filter=offline"><i class="bad"></i>Offline <b>{{ k.offline + k.stale }}</b></a>
+        <a href="{{ ep }}&protection={{ prot }}&filter=stale"><i class="warn"></i>7d+ <b>{{ k.stale }}</b></a>
+      </div>
+    </div>
+    {% endfor %}
+  </article>
 </section>
 
 <div class="inv-layout">
