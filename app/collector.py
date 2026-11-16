@@ -315,17 +315,27 @@ def summarize(endpoints: list[dict]) -> dict:
     }
 
 
-def refresh_details(session, client: Client, v1, rows: list[dict], now: datetime) -> dict[str, dict]:
-    """Return {agent_guid: components} for managed SEP/SWP endpoints, re-fetching the stalest ones."""
+def detail_actions(detail: dict) -> str:
+    """The console's deployment problems ("Installation not initiated...", "Target system requires at least
+    2 CPU cores.", network errors). Only the single-endpoint API returns this field."""
+    ra = detail.get("recommendedActions")
+    if isinstance(ra, list):
+        ra = " | ".join(str(x.get("description") or x.get("message") or x) if isinstance(x, dict) else str(x)
+                        for x in ra if x)
+    return str(ra or "").strip()[:2000]
+
+
+def refresh_details(session, client: Client, v1, rows: list[dict], now: datetime) -> dict[str, tuple]:
+    """Return {agent_guid: (components, recommended_actions)} for managed endpoints, re-fetching the stalest."""
     from concurrent.futures import ThreadPoolExecutor
 
     cache = {d.agent_guid: d for d in session.scalars(select(EndpointDetail).where(EndpointDetail.client_id == client.id))}
-    wanted = [r["agent_guid"] for r in rows if r["protection"] in ("SEP", "SWP")]
+    wanted = [r["agent_guid"] for r in rows]  # all managed: Sensor only can have deployment problems too
     ttl = timedelta(minutes=settings.detail_ttl_minutes)
 
     def age(g):
         d = cache.get(g)
-        if not d or not d.fetched_at:
+        if not d or not d.fetched_at or d.actions is None:
             return timedelta.max
         fa = d.fetched_at if d.fetched_at.tzinfo else d.fetched_at.replace(tzinfo=timezone.utc)
         return now - fa
@@ -334,29 +344,31 @@ def refresh_details(session, client: Client, v1, rows: list[dict], now: datetime
 
     def fetch(g):
         try:
-            return g, detail_components(v1.get_endpoint(g))
+            d = v1.get_endpoint(g)
+            return g, (detail_components(d), detail_actions(d))
         except Exception as exc:
             log.debug("%s: detail %s failed: %s", client.name, g, exc)
             return g, None
 
     if stale:
         with ThreadPoolExecutor(max_workers=max(1, settings.detail_workers)) as pool:
-            for g, comps in pool.map(fetch, stale):
-                if comps is None:
+            for g, got in pool.map(fetch, stale):
+                if got is None:
                     continue
+                comps, actions = got
                 d = cache.get(g)
                 if d is None:
                     d = EndpointDetail(client_id=client.id, agent_guid=g)
                     session.add(d)
                     cache[g] = d
-                d.components, d.fetched_at = comps, now
+                d.components, d.actions, d.fetched_at = comps, actions, now
         log.info("%s: refreshed exact versions for %d endpoints", client.name, len(stale))
     # forget endpoints that disappeared
     gone = set(cache) - set(wanted)
     if gone:
         session.execute(delete(EndpointDetail).where(EndpointDetail.client_id == client.id,
                                                      EndpointDetail.agent_guid.in_(gone)))
-    return {g: cache[g].components for g in wanted if g in cache and cache[g].components}
+    return {g: (cache[g].components or {}, cache[g].actions or "") for g in wanted if g in cache}
 
 
 def collect_client(session, client: Client, v1: VisionOneClient | None = None) -> dict:
@@ -376,11 +388,14 @@ def collect_client(session, client: Client, v1: VisionOneClient | None = None) -
             v1.close()
 
     for r in rows:
-        if r["agent_guid"] in exact:
-            r["components"] = exact[r["agent_guid"]]
+        comps, actions = exact.get(r["agent_guid"], ({}, ""))
+        if comps:
+            r["components"] = comps
+        if actions:
+            r["raw"] = {**r["raw"], "recommendedActions": actions}
     summary = summarize(rows)
     summary["unmanaged"] = unmanaged
-    summary["exact_versions"] = {"have": len(exact), "of": sum(1 for r in rows if r["protection"] in ("SEP", "SWP"))}
+    summary["exact_versions"] = {"have": sum(1 for c, _ in exact.values() if c), "of": sum(1 for r in rows if r["protection"] in ("SEP", "SWP"))}
 
     session.execute(delete(Endpoint).where(Endpoint.client_id == client.id))
     session.add_all(Endpoint(client_id=client.id, **r) for r in rows)
@@ -510,22 +525,27 @@ INVENTORY_FLAGS = {
 
 
 def inventory_flags(e) -> list[str]:
-    """Console action groups this endpoint belongs to (e is an Endpoint row or a normalized dict)."""
+    """Console action groups this endpoint belongs to (e is an Endpoint row or a normalized dict).
+
+    Matched against the Bandhan console on 2026-11-16:
+      * Deployment failed = the endpoint detail carries recommendedActions (install not initiated, too few
+        CPU cores, network error...). Not agentVersionStatus=updateFailed: that endpoint is not in the group.
+      * Sensor update recommended = a Server & Workload agent with no Vision One sensor record at all.
+      * Sensor disabled = a sensor record whose status is anything but enabled.
+    """
     get = (lambda k: e.get(k)) if isinstance(e, dict) else (lambda k: getattr(e, k, None))
     raw = get("raw") or {}
     edr = raw.get("edrSensor") or {}
-    epp = raw.get("eppAgent") or {}
     prot = get("protection") or ""
-    avs = str(get("agent_version_status") or "").lower()
     flags = []
-    install = " ".join(str(x) for x in (edr.get("status"), epp.get("status"), raw.get("agentUpdateStatus"),
-                                         edr.get("componentUpdateStatus"))).lower()
-    if avs == "updatefailed" or "fail" in install:
+    if str(raw.get("recommendedActions") or "").strip():
         flags.append("deploy_failed")
-    if avs == "updaterecommended":
-        flags.append("sensor_update" if prot == "Sensor only" else "agent_update")
+    if prot == "SWP" and not edr:
+        flags.append("sensor_update")
     if edr and str(edr.get("status") or "").lower() not in ("enabled", ""):
         flags.append("sensor_disabled")
+    if str(get("agent_version_status") or "").lower() == "updaterecommended":
+        flags.append("agent_update")  # shown as a tag on the row only; the console has no such group
     return flags
 
 

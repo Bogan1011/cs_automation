@@ -74,6 +74,8 @@ class EndpointDetail(Base):
     client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
     agent_guid: Mapped[str] = mapped_column(String(80))
     components: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Detail-only "recommendedActions" (install/deploy problems). NULL = not fetched since this column was added.
+    actions: Mapped[str | None] = mapped_column(Text, nullable=True)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

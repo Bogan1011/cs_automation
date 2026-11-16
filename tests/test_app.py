@@ -226,9 +226,9 @@ def test_exact_versions_from_endpoint_detail_per_protection_and_cached():
     b = make_client("Clix Capital", "sg")
     DETAIL_CALLS.clear()
     collect(a)
-    assert len(DETAIL_CALLS) == 6  # SEP 3 + SWP 3; sensor-only and unmanaged are skipped
+    assert len(DETAIL_CALLS) == 7  # every managed endpoint (SEP 3 + SWP 3 + Sensor only 1); unmanaged skipped
     collect(a)
-    assert len(DETAIL_CALLS) == 6  # cached for DETAIL_TTL_MINUTES, not re-fetched every poll
+    assert len(DETAIL_CALLS) == 7  # cached for DETAIL_TTL_MINUTES, not re-fetched every poll
     collect(b)
     with SessionLocal() as s:
         latest = reports.global_latest(s)
@@ -283,8 +283,16 @@ def test_home_page_and_inventory_counts():
     rec = {k: n for k, _, n in inv["recommended"]}
     assert rec["unmanaged"] == 4
     assert "agent_update" not in rec  # the console has no such group, so the panel doesn't either
+    # Rules matched to the Bandhan console (2026-11-16)
     assert collector.inventory_flags({"protection": "SEP", "agent_version_status": "updateFailed",
-                                      "raw": {"edrSensor": {"status": "disabled"}}}) == ["deploy_failed", "sensor_disabled"]
+                                      "raw": {"edrSensor": {"status": "enabled"}}}) == []  # updateFailed alone is not "Deployment failed"
+    assert collector.inventory_flags({"protection": "SEP", "raw": {"recommendedActions": "Installation not initiated.",
+                                      "edrSensor": {"status": "disabled"}}}) == ["deploy_failed", "sensor_disabled"]
+    assert collector.inventory_flags({"protection": "Sensor only", "raw": {"recommendedActions": "Target system requires at least 2 CPU cores.",
+                                      "edrSensor": {"status": "unknown"}}}) == ["deploy_failed", "sensor_disabled"]
+    assert collector.inventory_flags({"protection": "SWP", "raw": {}}) == ["sensor_update"]  # SWP agent with no sensor
+    assert collector.detail_actions({"recommendedActions": ["A network error has occurred."]}) == "A network error has occurred."
+    assert collector.detail_actions({}) == ""
 
 
 def test_sync_all_button_and_cli_poll_one_client(capsys, monkeypatch):
