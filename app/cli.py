@@ -202,12 +202,30 @@ def main(argv=None):
         elif args.cmd == "explain":
             from .collector import classify_protection, inventory_flags, normalize_endpoint
             c = get(args.name)
-            want = {e.strip().lower() for e in args.endpoints}
+            want = {e.strip().strip(",").lower() for e in args.endpoints if e.strip(", ")}
+            short = lambda n: n.split(".")[0]  # console may show FQDN, API the short name (or the reverse)
+            def nm(it):
+                return str(it.get("endpointName") or it.get("displayName") or "").lower()
+            def hit(it):
+                n = nm(it)
+                return n in want or short(n) in {short(w) for w in want}
             with VisionOneClient(crypto.decrypt(c.api_key_enc), c.region) as v1:
                 items = v1.list_endpoints()
-                found = [it for it in items if str(it.get("endpointName") or it.get("displayName") or "").lower() in want]
+                found = [it for it in items if hit(it)]
                 print(f"{len(items)} records from the API; matched {len(found)} of {len(want)} names")
-                missing = want - {str(it.get("endpointName") or it.get("displayName") or "").lower() for it in found}
+                flagged = {}
+                for it in items:
+                    if classify_protection(it) == "Unmanaged":
+                        continue
+                    for f in inventory_flags(normalize_endpoint(it)):
+                        flagged.setdefault(f, []).append(str(it.get("endpointName") or ""))
+                for f in ("deploy_failed", "sensor_update"):
+                    print(f"Dashboard currently counts as {f}: {', '.join(flagged.get(f, [])) or 'none'}")
+                    for n in flagged.get(f, []):
+                        if n.lower() not in want:
+                            found.append(next(it for it in items if str(it.get("endpointName") or "") == n))
+                found_names = {nm(it) for it in found}
+                missing = {w for w in want if w not in found_names and short(w) not in {short(n) for n in found_names}}
                 if missing:
                     print("Not returned by the API at all: " + ", ".join(sorted(missing)))
                 for it in found:
