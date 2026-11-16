@@ -435,3 +435,18 @@ def test_sep_compliance_report_runs(monkeypatch):
     with SessionLocal() as s:
         out = cli.sep_compliance_report(s.get(Client, a))
     assert "Rule A" in out and "Rule B, Virus Pattern" in out and "BL-" not in out
+
+
+def test_sep_compliance_uses_trend_feature_verdict():
+    outdated = {"patterns": [{"id": "1208090624", "name": "Smart Scan Agent Pattern", "version": "21.437.00"}],
+                "features": [{"name": "AntiMalwareScans", "status": "enabledButNotCompliant", "outdatedPatternIds": ["1208090624"]}]}
+    behaviour_only = {"patterns": [{"id": "1208090624", "name": "Smart Scan Agent Pattern", "version": "21.443.00"}],
+                      "features": [{"name": "BehaviorMonitoring", "status": "enabledButNotCompliant", "outdatedPatternIds": ["1208221826"]}]}
+    assert collector.virus_verdict(outdated) == "outdated"
+    assert collector.virus_verdict(behaviour_only) == "compliant"  # other patterns don't count
+    assert collector.virus_verdict({}) is None
+    comps = collector.detail_components({"eppAgent": outdated})
+    assert comps["_virus"] == "outdated"
+    # Trend's verdict wins over comparing versions with the newest seen
+    e = {"protection": "SEP", "stale": False, "components": {**comps, "Smart Scan Agent Pattern": "21.443.00"}}
+    assert collector.virus_state(e, {"Smart Scan Agent Pattern": "21.443.00"}) == "outdated"

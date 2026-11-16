@@ -272,7 +272,25 @@ def detail_components(detail: dict) -> dict[str, str]:
         for p in epp.get(section) or []:
             if isinstance(p, dict) and p.get("name") and p.get("version") not in (None, ""):
                 out[str(p["name"]).strip()] = str(p["version"]).strip()
+    out["_virus"] = virus_verdict(epp) or "unknown"  # "unknown" still marks the detail as fetched with this rule
     return out
+
+
+SMART_SCAN_PATTERN_ID = "1208090624"   # Smart Scan Agent Pattern
+VIRUS_PATTERN_ID = "1073741840"        # Virus Pattern (conventional scan)
+
+
+def virus_verdict(epp: dict) -> str | None:
+    """The SEP console's 'compliant / outdated virus patterns', from Trend's own per-feature compliance:
+    outdated when a feature lists the agent's virus pattern in outdatedPatternIds.
+    Matched to the Bandhan console on 2026-11-16 (174 outdated, exactly)."""
+    feats = epp.get("features") or []
+    if not feats:
+        return None
+    ids = {str(p.get("id")) for p in epp.get("patterns") or [] if isinstance(p, dict)}
+    virus_id = SMART_SCAN_PATTERN_ID if SMART_SCAN_PATTERN_ID in ids or VIRUS_PATTERN_ID not in ids else VIRUS_PATTERN_ID
+    outdated = {str(i) for f in feats if isinstance(f, dict) for i in (f.get("outdatedPatternIds") or [])}
+    return "outdated" if virus_id in outdated else "compliant"
 
 
 def summarize(endpoints: list[dict]) -> dict:
@@ -331,11 +349,12 @@ def refresh_details(session, client: Client, v1, rows: list[dict], now: datetime
 
     cache = {d.agent_guid: d for d in session.scalars(select(EndpointDetail).where(EndpointDetail.client_id == client.id))}
     wanted = [r["agent_guid"] for r in rows]  # all managed: Sensor only can have deployment problems too
+    sep_guids = {r["agent_guid"] for r in rows if r["protection"] == "SEP"}
     ttl = timedelta(minutes=settings.detail_ttl_minutes)
 
     def age(g):
         d = cache.get(g)
-        if not d or not d.fetched_at or d.actions is None:
+        if not d or not d.fetched_at or d.actions is None or (g in sep_guids and "_virus" not in (d.components or {})):
             return timedelta.max
         fa = d.fetched_at if d.fetched_at.tzinfo else d.fetched_at.replace(tzinfo=timezone.utc)
         return now - fa
@@ -487,6 +506,8 @@ def virus_state(e, latest_sep: dict[str, str]) -> str:
     if get("stale"):
         return "offline7"
     comps = get("components") or {}
+    if comps.get("_virus") in ("compliant", "outdated"):
+        return comps["_virus"]  # Trend's own verdict, what the SEP console shows
     for name in VIRUS_PATTERNS:
         if name in comps and name in latest_sep:
             return "compliant" if version_key(str(comps[name])) >= version_key(latest_sep[name]) else "outdated"
