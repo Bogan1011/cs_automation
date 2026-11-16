@@ -425,3 +425,13 @@ def test_online_status_comes_from_product_consoles(monkeypatch):
         page = http.get(f"/clients/{a}").text
         assert "From the Apex One console" in page
         assert "Connect the Server &amp; Workload API" in page  # no SWP data for this client
+
+
+def test_sep_compliance_report_runs(monkeypatch):
+    from app import cli
+    real = collector.VisionOneClient
+    monkeypatch.setattr(cli, "VisionOneClient", lambda key, region, **kw: real("secret-key", region, transport=v1_transport()))
+    a = make_client()
+    with SessionLocal() as s:
+        out = cli.sep_compliance_report(s.get(Client, a))
+    assert "Rule A" in out and "Rule B, Virus Pattern" in out and "BL-" not in out

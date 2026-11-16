@@ -39,6 +39,57 @@ def _flatten(obj, prefix=""):
         yield prefix, obj
 
 
+def sep_compliance_report(c) -> str:
+    """Fetch live detail for every SEP agent seen in the last 7 days and count compliance several ways,
+    so we can see which one the Apex One / SEP console uses. Prints counts only, no names."""
+    from concurrent.futures import ThreadPoolExecutor
+    from .collector import (VIRUS_PATTERNS, classify_protection, component_state, normalize_endpoint,
+                            version_key)
+    out = []
+    with VisionOneClient(crypto.decrypt(c.api_key_enc), c.region) as v1:
+        rows = [normalize_endpoint(i) for i in v1.list_endpoints()]
+        sep = list({r["agent_guid"]: r for r in rows if r["protection"] == "SEP"}.values())
+        fresh = [r for r in sep if not r["stale"]]
+        out.append(f"SEP agents: {len(sep)}; offline 7+ days (Vision One last connected): {len(sep) - len(fresh)}; rated: {len(fresh)}")
+        verdict = Counter(component_state(r) for r in fresh)
+        out.append(f"\nRule A, Trend componentVersion verdict: {dict(verdict)}")
+
+        def get_detail(r):
+            try:
+                return v1.get_endpoint(r["agent_guid"])
+            except Exception:
+                return None
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            details = [d for d in pool.map(get_detail, fresh) if d]
+    out.append(f"(fetched live detail for {len(details)} agents)")
+    pats = defaultdict(Counter)
+    ids = {}
+    feats = defaultdict(Counter)
+    feat_out_ids = defaultdict(Counter)
+    for d in details:
+        epp = d.get("eppAgent") or {}
+        for p in epp.get("patterns") or []:
+            if p.get("name") in VIRUS_PATTERNS:
+                pats[p["name"]][str(p.get("version"))] += 1
+                ids[p["name"]] = str(p.get("id"))
+        for f in epp.get("features") or []:
+            feats[str(f.get("name"))][str(f.get("status"))] += 1
+            for i in f.get("outdatedPatternIds") or []:
+                feat_out_ids[str(f.get("name"))][str(i)] += 1
+    for name, vers in pats.items():
+        ordered = sorted(vers.items(), key=lambda kv: version_key(kv[0]), reverse=True)
+        out.append(f"\nRule B, {name} (id {ids.get(name)}) versions: " + ", ".join(f"{v}: {n}" for v, n in ordered[:10]))
+        top = ordered[0][1] if ordered else 0
+        top2 = sum(n for _, n in ordered[:2])
+        out.append(f"   newest only = {top} compliant; newest two = {top2} compliant; total {sum(vers.values())}")
+    out.append("\nRule C, feature status (enabledAndCompliant / enabledButNotCompliant ...):")
+    for name, st in sorted(feats.items()):
+        out.append(f"   {name}: {dict(st)}")
+        if feat_out_ids.get(name):
+            out.append(f"      outdated pattern ids: {dict(feat_out_ids[name].most_common(8))}")
+    return "\n".join(out)
+
+
 def inspect_fields(items: list[dict]) -> str:
     """Field paths, how often they are filled, and value counts for low-cardinality, non-identifying fields."""
     seen: dict[str, Counter] = defaultdict(Counter)
@@ -105,6 +156,8 @@ def main(argv=None):
     ex = sub.add_parser("explain", help="show every status field for named endpoints, to match console categories")
     ex.add_argument("--name", required=True, help="client name")
     ex.add_argument("endpoints", nargs="+", help="endpoint names exactly as the console shows them")
+    sc = sub.add_parser("sep-compliance", help="compare ways of counting SEP virus pattern compliance (read-only)")
+    sc.add_argument("--name", required=True)
     po = sub.add_parser("poll", help="run one collection now (all clients, or one with --name)")
     po.add_argument("--name", help="only this client (as shown by list-clients)")
     po.add_argument("--all-details", action="store_true",
@@ -199,6 +252,8 @@ def main(argv=None):
                         print(json.dumps((d.get("eppAgent") or {}).get("patterns"), indent=1)[:6000])
                     except Exception as exc:
                         print(f"  failed: {exc}")
+        elif args.cmd == "sep-compliance":
+            print(sep_compliance_report(get(args.name)))
         elif args.cmd == "explain":
             from .collector import classify_protection, inventory_flags, normalize_endpoint
             c = get(args.name)
