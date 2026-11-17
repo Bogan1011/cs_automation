@@ -655,3 +655,26 @@ h2.sect{font-size:20px;font-weight:700;margin:28px 0 0;letter-spacing:-.02em}
 @media (prefers-color-scheme:light){:root:not([data-theme]) .brand .brand-logo img{filter:drop-shadow(0 1px 2px rgba(0,0,0,.3))}}
 :root[data-theme="navy"] .brand-text b{background:linear-gradient(90deg,#FF6B5B,#FFB199);-webkit-background-clip:text;background-clip:text}
 :root[data-theme="navy"] .brand-logo{background:linear-gradient(155deg,rgba(255,107,91,.4),rgba(255,159,122,.25))}
+
+/* Logo harmony: the Eventus mark is an orange→magenta→purple swirl with a white wordmark.
+   Sit it on a neutral dark glass chip (readable in every theme) and take the accents from the swirl. */
+.brand-logo,.login .logo,:root[data-theme="navy"] .brand-logo{background:rgba(8,12,24,.55);border:1px solid rgba(255,255,255,.10);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 4px 14px rgba(0,0,0,.25)}
+.brand-text b{background:linear-gradient(90deg,#ff8a3d,#ff3d8b 45%,#a463ff)!important;-webkit-background-clip:text!important;background-clip:text!important}
+:root[data-theme="light"] .brand-logo,:root[data-theme="light"] .login .logo{background:#14182a;border-color:transparent}
+@media (prefers-color-scheme:light){:root:not([data-theme]) .brand-logo,:root:not([data-theme]) .login .logo{background:#14182a;border-color:transparent}}
+/* Navy: keep navy + cream, move the accent from flat coral to the logo's coral→magenta */
+:root[data-theme="navy"]{--brand-1:#FF6B5B; --brand-2:#E6007E; --brand-grad:linear-gradient(135deg,#FF7A45,#F0367F 55%,#B03CE0);
+  --on-brand:#fff; --brand-glow:rgba(240,54,127,.32)}
+:root[data-theme="navy"] .seg-ind{background:linear-gradient(135deg,#FF7A45,#F0367F 60%,#B03CE0);box-shadow:0 4px 14px rgba(240,54,127,.35)}
+:root[data-theme="navy"] .tabs.seg a.on{color:#fff}
+:root[data-theme="navy"] .tabs.seg a.on i{background:#fff}
+:root[data-theme="navy"] .theme-pill .knob{background:linear-gradient(155deg,#FF7A45,#F0367F)}
+:root[data-theme="navy"] .wicon.sep,:root[data-theme="navy"] .iico.xdr{background:linear-gradient(135deg,#FF7A45,#F0367F)}
+:root[data-theme="navy"] .spark{stroke:#ff5c8a}
+:root[data-theme="navy"] body::before{background:radial-gradient(34% 40% at 62% 6%,rgba(240,54,127,.26),transparent 70%),
+  radial-gradient(30% 36% at 30% 4%,rgba(255,122,69,.16),transparent 70%),
+  radial-gradient(40% 46% at 12% 20%,rgba(120,70,200,.24),transparent 72%),
+  linear-gradient(180deg,#16244a 0%,#14213D 45%,#111c35 100%)}
+/* the logo always sits on the dark chip now, so never invert it (OS light mode used to flip it) */
+.brand .brand-logo img,.login .logo img{filter:drop-shadow(0 1px 2px rgba(0,0,0,.3))!important}
