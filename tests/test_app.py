@@ -290,8 +290,10 @@ def test_home_page_and_inventory_counts():
                                       "edrSensor": {"status": "disabled"}}}) == ["deploy_failed", "sensor_disabled"]
     assert collector.inventory_flags({"protection": "Sensor only", "raw": {"recommendedActions": "Target system requires at least 2 CPU cores.",
                                       "edrSensor": {"status": "unknown"}}}) == ["deploy_failed", "sensor_disabled"]
-    assert collector.inventory_flags({"protection": "SWP", "raw": {"osPlatform": "windows"}}) == ["sensor_update"]
-    assert collector.inventory_flags({"protection": "SWP", "raw": {"osName": "CentOS 7", "osPlatform": "linux"}}) == ["sensor_update"]
+    assert collector.inventory_flags({"protection": "SWP", "agent_version": "20.0.0.6313", "raw": {"osPlatform": "windows"}}) == ["sensor_update"]
+    assert collector.inventory_flags({"protection": "SWP", "agent_version": "20.0.3.11080", "raw": {"osName": "CentOS 7", "osPlatform": "linux"}}) == ["sensor_update"]
+    assert collector.inventory_flags({"protection": "SWP", "agent_version": "20.0.1.690", "stale": True, "raw": {"osPlatform": "linux"}}) == []
+    assert collector.inventory_flags({"protection": "SWP", "agent_version": "10.0.0.4069", "raw": {"osPlatform": "windows"}}) == []
     assert collector.inventory_flags({"protection": "SWP", "raw": {"osName": "AIX 7.1", "osPlatform": "unix"}}) == []
     assert collector.detail_actions({"recommendedActions": ["A network error has occurred."]}) == "A network error has occurred."
     assert collector.detail_actions({}) == ""
