@@ -158,6 +158,7 @@ def main(argv=None):
     ex.add_argument("endpoints", nargs="+", help="endpoint names exactly as the console shows them")
     sc = sub.add_parser("sep-compliance", help="compare ways of counting SEP virus pattern compliance (read-only)")
     sc.add_argument("--name", required=True)
+    sub.add_parser("graph-login", help="sign in to Microsoft 365 once (device code) for drafts and case emails")
     sub.add_parser("sync-cases", help="read new Trend support case emails from the Outlook mailbox now")
     po = sub.add_parser("poll", help="run one collection now (all clients, or one with --name)")
     po.add_argument("--name", help="only this client (as shown by list-clients)")
@@ -313,6 +314,10 @@ def main(argv=None):
                 print(f"OK: {len(items)} endpoints")
             else:
                 print(json.dumps(items[0] if items else {}, indent=2))
+        elif args.cmd == "graph-login":
+            from .outlook import device_login
+            print("Signed in as", device_login())
+            print("Outlook drafts and support case emails will now work.")
         elif args.cmd == "sync-cases":
             from .cases import sync_cases
             print(sync_cases())

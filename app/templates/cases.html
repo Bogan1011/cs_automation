@@ -14,7 +14,7 @@
   </div>
 </div>
 {% if synced %}<p class="okmsg">{{ synced }}</p>{% endif %}
-{% if not configured %}<p class="err">Microsoft 365 isn't connected yet. Set GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET and CASES_MAILBOX in .env (the app needs Mail.Read), then restart.</p>{% endif %}
+{% if not configured %}<p class="err">Microsoft 365 isn't connected yet. Put GRAPH_TENANT_ID and GRAPH_CLIENT_ID in .env, rebuild, then sign in once on the server: docker compose exec -it app python -m app.cli graph-login</p>{% endif %}
 
 <nav class="stabs">
   {% for k, label in tabs.items() %}<a href="?tab={{ k }}" class="{{ 'on' if tab == k }}">{{ label }} <b>{{ counts.get(k, 0) }}</b></a>{% endfor %}

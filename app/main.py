@@ -176,7 +176,7 @@ def client_page(request: Request, client_id: int):
             "behind": {e.id: collector.components_behind(e.components, latest.get(e.protection, {})) for e in endpoints},
             "history": [{"t": h.taken_at.isoformat(), "total": h.summary.get("total", 0),
                          "online": h.summary.get("online", 0)} for h in reversed(history)],
-            "graph_configured": settings.graph_configured, "report_to": c.report_to,
+            "graph_configured": outlook.configured(), "report_to": c.report_to,
         })
 
 
@@ -285,8 +285,7 @@ def cases_page(request: Request, client_id: int, tab: str = "open", synced: str 
         return templates.TemplateResponse(request, "cases.html", {
             "client": {"id": c.id, "name": c.name}, "rows": shown, "tab": tab, "tabs": CASE_TABS, "counts": counts,
             "tags": ", ".join(cases.client_tags(c)), "custom_tags": c.case_tags, "synced": synced,
-            "configured": bool(settings.graph_tenant_id and settings.graph_client_id and settings.graph_client_secret
-                               and (settings.cases_mailbox or settings.graph_mailbox)),
+            "configured": outlook.configured(),
             "last_mail": state.value if state else None, "is_open": cases.is_open,
         })
 

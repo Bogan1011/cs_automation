@@ -529,3 +529,38 @@ def test_support_cases_from_emails(monkeypatch):
         bl = make_client("Bandhan Life")
         http.post(f"/clients/{bl}/cases/tags", data={"tags": "[BLI]"})
         assert "TM-04000001" in http.get(f"/clients/{bl}/cases").text
+
+
+def test_delegated_graph_login_without_admin(monkeypatch):
+    from app import cases, outlook
+    from app.config import settings
+    for k, v in {"graph_tenant_id": "t", "graph_client_id": "c", "graph_client_secret": "", "graph_mailbox": ""}.items():
+        monkeypatch.setattr(settings, k, v)
+    monkeypatch.setattr(outlook.time, "sleep", lambda s: None)
+    assert outlook.delegated() and not outlook.configured()
+    polls, seen = [], []
+
+    def handler(req):
+        body = dict(x.split("=", 1) for x in req.content.decode().split("&")) if req.content else {}
+        if req.url.path.endswith("/devicecode"):
+            return httpx.Response(200, json={"device_code": "D", "user_code": "ABC", "verification_uri": "https://microsoft.com/devicelogin",
+                                             "message": "Go to https://microsoft.com/devicelogin and enter ABC", "interval": 1, "expires_in": 60})
+        if req.url.path.endswith("/token"):
+            assert "client_secret" not in body  # public client, no secret
+            if body.get("grant_type", "").endswith("device_code"):
+                polls.append(1)
+                if len(polls) == 1:
+                    return httpx.Response(400, json={"error": "authorization_pending"})
+                return httpx.Response(200, json={"access_token": "A1", "refresh_token": "R1"})
+            assert body["grant_type"] == "refresh_token" and body["refresh_token"] in ("R1", "R2")
+            return httpx.Response(200, json={"access_token": "A2", "refresh_token": "R2"})
+        if req.url.path == "/v1.0/me":
+            return httpx.Response(200, json={"mail": "me@x.com"})
+        seen.append(req.url.path)
+        return httpx.Response(200, json={"value": []})
+
+    t = httpx.MockTransport(handler)
+    assert outlook.device_login(transport=t, say=lambda m: None) == "me@x.com"
+    assert outlook.configured() and outlook._stored_refresh() == "R1"
+    assert cases.sync_cases(transport=t) == {"ok": True, "emails": 0}
+    assert seen == ["/v1.0/me/messages"] and outlook._stored_refresh() == "R2"  # rotated token saved

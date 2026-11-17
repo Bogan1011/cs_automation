@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from .config import settings
 from .db import Client, SessionLocal, SupportCase, SyncState
+from . import outlook
 from .outlook import GRAPH, _token
 
 log = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ def match_client(subject: str, clients: list[Client]) -> int | None:
 
 def _messages(http: httpx.Client, mailbox: str, since: datetime):
     token = _token(http)
-    url = f"{GRAPH}/users/{mailbox}/messages"
+    url = f"{GRAPH}{outlook.mailbox_path(mailbox)}/messages"
     params = {"$filter": f"receivedDateTime ge {since.strftime('%Y-%m-%dT%H:%M:%SZ')}",
               "$orderby": "receivedDateTime asc", "$select": SELECT, "$top": "100"}
     while url:
@@ -140,8 +141,8 @@ def apply_message(session, m: dict, clients: list[Client]) -> str | None:
 def sync_cases(transport=None) -> dict:
     """Read new case emails since the last run (first run: CASES_BACKFILL_DAYS back). Read-only on the mailbox."""
     mailbox = settings.cases_mailbox or settings.graph_mailbox
-    if not (settings.graph_tenant_id and settings.graph_client_id and settings.graph_client_secret and mailbox):
-        return {"ok": False, "error": "Microsoft 365 not configured (GRAPH_* and CASES_MAILBOX in .env)"}
+    if not outlook.configured() and not (settings.graph_client_secret and mailbox):
+        return {"ok": False, "error": "Microsoft 365 not connected (see README section 3)"}
     with SessionLocal() as session:
         state = session.get(SyncState, "cases_since") or SyncState(key="cases_since", value="")
         since = _dt(state.value) or datetime.now(timezone.utc) - timedelta(days=settings.cases_backfill_days)

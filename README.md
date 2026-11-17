@@ -76,23 +76,24 @@ docker compose exec app python -m app.cli apex-probe --name "Bandhan Life"
 
 Once these are connected, the next poll matches computers to endpoints by host name and fills in the Patterns table with exact versions. The latest version of each pattern is the newest one found across all clients.
 
-## 3. Outlook drafts (Microsoft 365)
+## 3. Outlook drafts and support case emails (Microsoft 365)
 
-1. In **Microsoft Entra admin centre → App registrations → New registration**, create an app named `Vision One Dashboard` with single tenant.
-2. Under **API permissions**, add **Microsoft Graph → Application → Mail.ReadWrite**, then **Grant admin consent**.
-3. Under **Certificates & secrets**, create a new client secret.
-4. Put `GRAPH_TENANT_ID`, `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, and `GRAPH_MAILBOX` (your mailbox) in `.env`, then run `docker compose up -d`.
-5. **Recommended:** limit the app to your mailbox only by running this in Exchange Online PowerShell:
-   ```powershell
-   New-ApplicationAccessPolicy -AppId <GRAPH_CLIENT_ID> -PolicyScopeGroupId you@eventussecurity.com -AccessRight RestrictAccess -Description "V1 dashboard drafts"
-   ```
+**Without admin rights (recommended):**
+1. Open https://portal.azure.com, go to **App registrations → New registration**, name it `Vision One Dashboard`, choose single tenant, and click Register.
+2. On the **Authentication** page, set **Allow public client flows** to **Yes**.
+3. Under **API permissions → Microsoft Graph → Delegated**, add `Mail.ReadWrite`. Don't add Application permissions.
+4. Put `GRAPH_TENANT_ID` and `GRAPH_CLIENT_ID` in `.env`, leave `GRAPH_CLIENT_SECRET` empty, and run `docker compose up -d --build`.
+5. Sign in once: `docker compose exec -it app python -m app.cli graph-login`. Open the link, enter the code, and approve.
+   The refresh token is stored encrypted in the database. The dashboard acts as you, on your own mailbox only. Run the command again if Microsoft ever asks you to sign in again.
 
-The dashboard only calls `POST /users/{mailbox}/messages`, which creates a draft. It never sends mail.
+**App-only (needs an admin):** grant application permission Mail.ReadWrite, then set `GRAPH_CLIENT_SECRET` and `GRAPH_MAILBOX` as well.
+
+Report drafts are only created (`POST …/messages`). The dashboard never sends mail.
 
 ### Support cases from email
 
 The same app reads Trend support case emails (subjects with `TM-12345678`) every 5 minutes with `GET /users/{mailbox}/messages`.
-It only reads. Mail.ReadWrite already covers this. Set `CASES_MAILBOX` if the case emails go to a different mailbox than `GRAPH_MAILBOX`.
+It only reads them. With the no-admin sign-in it reads your own mailbox. With app-only, it reads `CASES_MAILBOX`, or `GRAPH_MAILBOX` if that isn't set.
 Cases are matched to a client by the tag in the subject, like `[IFL]`. You can change the tag at the bottom of the client's Support cases page.
 To read new emails right away, run `docker compose exec app python -m app.cli sync-cases`.
 
