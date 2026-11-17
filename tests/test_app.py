@@ -290,7 +290,9 @@ def test_home_page_and_inventory_counts():
                                       "edrSensor": {"status": "disabled"}}}) == ["deploy_failed", "sensor_disabled"]
     assert collector.inventory_flags({"protection": "Sensor only", "raw": {"recommendedActions": "Target system requires at least 2 CPU cores.",
                                       "edrSensor": {"status": "unknown"}}}) == ["deploy_failed", "sensor_disabled"]
-    assert collector.inventory_flags({"protection": "SWP", "raw": {}}) == ["sensor_update"]  # SWP agent with no sensor
+    assert collector.inventory_flags({"protection": "SWP", "raw": {"osPlatform": "windows"}}) == ["sensor_update"]
+    assert collector.inventory_flags({"protection": "SWP", "raw": {"osName": "CentOS 7", "osPlatform": "linux"}}) == ["sensor_update"]
+    assert collector.inventory_flags({"protection": "SWP", "raw": {"osName": "AIX 7.1", "osPlatform": "unix"}}) == []
     assert collector.detail_actions({"recommendedActions": ["A network error has occurred."]}) == "A network error has occurred."
     assert collector.detail_actions({}) == ""
 

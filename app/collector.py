@@ -706,13 +706,21 @@ INVENTORY_FLAGS = {
 }
 
 
+def _sensor_platform(raw: dict) -> bool:
+    """The Vision One sensor only runs on Windows and Linux. SWP agents on AIX, Solaris or HP-UX have no
+    sensor either, but the console doesn't recommend a sensor update for them."""
+    os_text = " ".join(str(raw.get(k) or "") for k in ("osPlatform", "osName")).lower()
+    return any(w in os_text for w in ("windows", "linux", "centos", "red hat", "ubuntu", "suse", "debian",
+                                      "amazon", "oracle", "rocky", "alma"))
+
+
 def inventory_flags(e) -> list[str]:
     """Console action groups this endpoint belongs to (e is an Endpoint row or a normalized dict).
 
     Matched against the Bandhan console on 2026-11-16:
       * Deployment failed = the endpoint detail carries recommendedActions (install not initiated, too few
         CPU cores, network error...). Not agentVersionStatus=updateFailed: that endpoint is not in the group.
-      * Sensor update recommended = a Server & Workload agent with no Vision One sensor record at all.
+      * Sensor update recommended = a Server & Workload agent on Windows or Linux with no sensor record\n        (AIX/Solaris agents have no sensor but are not in this group: 21 vs 4 on 2026-11-17).
       * Sensor disabled = a sensor record whose status is anything but enabled.
     """
     get = (lambda k: e.get(k)) if isinstance(e, dict) else (lambda k: getattr(e, k, None))
@@ -722,7 +730,7 @@ def inventory_flags(e) -> list[str]:
     flags = []
     if str(raw.get("recommendedActions") or "").strip():
         flags.append("deploy_failed")
-    if prot == "SWP" and not edr:
+    if prot == "SWP" and not edr and _sensor_platform(raw):
         flags.append("sensor_update")
     if edr and str(edr.get("status") or "").lower() not in ("enabled", ""):
         flags.append("sensor_disabled")
