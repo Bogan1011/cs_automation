@@ -454,3 +454,20 @@ def test_sep_compliance_uses_trend_feature_verdict():
     # Trend's verdict wins over comparing versions with the newest seen
     e = {"protection": "SEP", "stale": False, "components": {**comps, "Smart Scan Agent Pattern": "21.443.00"}}
     assert collector.virus_state(e, {"Smart Scan Agent Pattern": "21.443.00"}) == "outdated"
+
+
+def test_agent_installer_links_saved_and_shown():
+    a = make_client("IFL - India First Life")
+    url = "https://eventustpl-my.sharepoint.com/:u:/g/personal/x/abc?e=1"
+    with TestClient(app) as http:
+        http.post("/login", data={"username": "admin", "password": "pw"})
+        page = http.get(f"/clients/{a}/installer").text
+        assert "Server &amp; Workload agent + XDR sensor" in page and "Manage script links" in page
+        r = http.post(f"/clients/{a}/installer", data={"c1ws:windows": url, "xdr:linux": ""}, follow_redirects=False)
+        assert r.status_code == 303 and "saved=1" in r.headers["location"]
+        page = http.get(f"/clients/{a}/installer").text
+        assert f'data-windows="{url}"' in page.replace("&amp;", "&") or url.replace("&", "&amp;") in page
+        bad = http.post(f"/clients/{a}/installer", data={"c1ws:linux": "http://evil.example/x.sh"}, follow_redirects=False)
+        assert "error=" in bad.headers["location"]
+    with SessionLocal() as s:
+        assert s.get(Client, a).installers == {"c1ws:windows": url}  # bad link rejected, nothing overwritten

@@ -21,7 +21,9 @@ class Client(Base):
     name: Mapped[str] = mapped_column(String(120), unique=True)
     region: Mapped[str] = mapped_column(String(10))
     api_key_enc: Mapped[str] = mapped_column(Text)
-    report_to: Mapped[str] = mapped_column(String(500), default="")  # comma-separated recipients for the draft
+    report_to: Mapped[str] = mapped_column(String(500), default="")
+    # Agent installer share links: {"c1ws:windows": url, "c1ws_xdr:linux": url, ...}
+    installers: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # comma-separated recipients for the draft
     # Optional product-console APIs for exact pattern versions
     swp_url: Mapped[str] = mapped_column(String(300), default="")
     swp_key_enc: Mapped[str] = mapped_column(Text, default="")

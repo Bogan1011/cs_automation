@@ -253,3 +253,34 @@ function startPagedTable(id) {
   addEventListener('keydown', e => { if (e.key === '/' && document.activeElement !== search) { e.preventDefault(); search.focus(); } });
   render(true);
 }
+
+// Agent installer: card -> Windows/Linux sheet -> copy / email / open the OneDrive link
+function startInstaller(clientName, reportTo) {
+  const dlg = document.getElementById('pick'), $ = id => document.getElementById(id);
+  let card = null;
+  const showOs = () => { $('step-os').hidden = false; $('step-link').hidden = true; };
+  document.querySelectorAll('.icard').forEach(c => c.addEventListener('click', () => {
+    card = c; $('pick-title').textContent = c.dataset.title; showOs();
+    dlg.showModal ? dlg.showModal() : dlg.setAttribute('open', '');
+  }));
+  document.querySelectorAll('.osbtn').forEach(b => b.addEventListener('click', () => {
+    const os = b.dataset.os, url = card.dataset[os] || '', label = b.textContent.trim();
+    $('pick-os').textContent = label; $('pick-url').value = url;
+    $('step-os').hidden = true; $('step-link').hidden = false;
+    $('nolink').hidden = !!url;
+    ['copy', 'mail', 'open'].forEach(id => $(id).classList.toggle('disabled', !url));
+    $('copy').disabled = !url;
+    $('open').href = url || '#';
+    const subject = `${clientName}: Trend Micro ${card.dataset.title} installer (${label})`;
+    const body = `Hi,\n\nPlease use the script below to install the ${card.dataset.title} on your ${label} machines:\n\n${url}\n\nRun it with administrator/root rights. Let us know once done or if you face any issue.\n\nRegards,\nEventus Security SOC`;
+    $('mail').href = url ? `mailto:${encodeURIComponent(reportTo || '')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}` : '#';
+  }));
+  $('back').addEventListener('click', showOs);
+  $('copy').addEventListener('click', async () => {
+    const url = $('pick-url').value; if (!url) return;
+    try { await navigator.clipboard.writeText(url); }
+    catch (e) { $('pick-url').select(); document.execCommand('copy'); }
+    $('copy').textContent = '✓ Copied'; setTimeout(() => $('copy').textContent = 'Copy link', 1600);
+  });
+  dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+}

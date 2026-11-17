@@ -12,6 +12,7 @@
     </p>
   </div>
   <div class="actions">
+    <a class="button ghost" href="/clients/{{ client.id }}/installer">⬇ Agent installer</a>
     <button class="ghost" id="refresh" data-id="{{ client.id }}" title="Pull fresh data for this client now">↻ Sync now</button>
     <a class="button ghost" href="/clients/{{ client.id }}/report.pdf">PDF</a>
     <button id="report" data-id="{{ client.id }}" title="{{ '' if graph_configured else 'Outlook is not set up yet: falls back to a PDF download' }}">Report → Outlook draft</button>

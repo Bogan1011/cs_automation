@@ -246,6 +246,59 @@ def _c1ws_match(x: dict, tab: str) -> bool:
     return x["status"] == tab
 
 
+INSTALLER_KINDS = {
+    "c1ws": ("Server & Workload agent only", "Installs the Server & Workload Protection (C1WS) agent."),
+    "c1ws_xdr": ("Server & Workload agent + XDR sensor", "Installs the C1WS agent with the Vision One XDR sensor."),
+    "xdr": ("XDR sensor only", "Installs only the Vision One XDR sensor."),
+}
+INSTALLER_OS = {"windows": "Windows", "linux": "Linux"}
+
+
+def _valid_share_link(url: str) -> bool:
+    from urllib.parse import urlparse
+    u = urlparse(url.strip())
+    return u.scheme == "https" and bool(u.netloc) and (u.netloc.endswith(".sharepoint.com")
+                                                     or u.netloc.endswith("onedrive.live.com")
+                                                     or u.netloc == "1drv.ms")
+
+
+@app.get("/clients/{client_id}/installer", response_class=HTMLResponse)
+def installer_page(request: Request, client_id: int, saved: int = 0, error: str = ""):
+    """Agent installer: pick a script, pick Windows/Linux, copy or email its OneDrive share link."""
+    require_login(request)
+    with SessionLocal() as s:
+        c = s.get(Client, client_id) or _404()
+        return templates.TemplateResponse(request, "installer.html", {
+            "client": {"id": c.id, "name": c.name}, "links": c.installers or {}, "report_to": c.report_to,
+            "kinds": INSTALLER_KINDS, "oses": INSTALLER_OS, "saved": saved, "error": error,
+        })
+
+
+@app.post("/clients/{client_id}/installer")
+async def installer_save(request: Request, client_id: int):
+    require_login(request)
+    form = await request.form()
+    links, bad = {}, []
+    for k in INSTALLER_KINDS:
+        for o in INSTALLER_OS:
+            url = str(form.get(f"{k}:{o}") or "").strip()
+            if not url:
+                continue
+            if _valid_share_link(url):
+                links[f"{k}:{o}"] = url[:2000]
+            else:
+                bad.append(f"{INSTALLER_KINDS[k][0]} ({INSTALLER_OS[o]})")
+    with SessionLocal() as s:
+        c = s.get(Client, client_id) or _404()
+        if bad:
+            from urllib.parse import quote
+            return RedirectResponse(f"/clients/{c.id}/installer?error=" + quote("Not a OneDrive/SharePoint https link: " + ", ".join(bad)),
+                                    status_code=303)
+        c.installers = links
+        s.commit()
+    return RedirectResponse(f"/clients/{client_id}/installer?saved=1", status_code=303)
+
+
 def _404():
     raise HTTPException(status_code=404, detail="Client not found")
 
