@@ -343,6 +343,13 @@ def detail_actions(detail: dict) -> str:
     return str(ra or "").strip()[:2000]
 
 
+def detail_sig(r: dict) -> str:
+    """What the endpoint list says about an agent's pattern state. When it changes (agent connected,
+    pulled a new pattern, or Trend released one and now calls it outdated) the cached verdict is stale."""
+    lc = r.get("last_connected")
+    return f"{r.get('component_version') or ''}|{lc.isoformat() if lc else ''}"
+
+
 def refresh_details(session, client: Client, v1, rows: list[dict], now: datetime) -> dict[str, tuple]:
     """Return {agent_guid: (components, recommended_actions)} for managed endpoints, re-fetching the stalest."""
     from concurrent.futures import ThreadPoolExecutor
@@ -351,11 +358,14 @@ def refresh_details(session, client: Client, v1, rows: list[dict], now: datetime
     wanted = [r["agent_guid"] for r in rows]  # all managed: Sensor only can have deployment problems too
     sep_guids = {r["agent_guid"] for r in rows if r["protection"] == "SEP"}
     ttl = timedelta(minutes=settings.detail_ttl_minutes)
+    sigs = {r["agent_guid"]: detail_sig(r) for r in rows}
 
     def age(g):
         d = cache.get(g)
         if not d or not d.fetched_at or d.actions is None or (g in sep_guids and "_virus" not in (d.components or {})):
             return timedelta.max
+        if g in sep_guids and (d.components or {}).get("_sig") != sigs[g]:
+            return timedelta.max  # agent checked in or its pattern state flipped since we looked: verdict may be stale
         fa = d.fetched_at if d.fetched_at.tzinfo else d.fetched_at.replace(tzinfo=timezone.utc)
         return now - fa
 
@@ -380,7 +390,7 @@ def refresh_details(session, client: Client, v1, rows: list[dict], now: datetime
                     d = EndpointDetail(client_id=client.id, agent_guid=g)
                     session.add(d)
                     cache[g] = d
-                d.components, d.actions, d.fetched_at = comps, actions, now
+                d.components, d.actions, d.fetched_at = {**comps, "_sig": sigs[g]}, actions, now
         log.info("%s: refreshed exact versions for %d endpoints", client.name, len(stale))
     # forget endpoints that disappeared
     gone = set(cache) - set(wanted)

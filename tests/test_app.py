@@ -229,6 +229,16 @@ def test_exact_versions_from_endpoint_detail_per_protection_and_cached():
     assert len(DETAIL_CALLS) == 7  # every managed endpoint (SEP 3 + SWP 3 + Sensor only 1); unmanaged skipped
     collect(a)
     assert len(DETAIL_CALLS) == 7  # cached for DETAIL_TTL_MINUTES, not re-fetched every poll
+    sep = next(e for e in ENDPOINTS if collector.normalize_endpoint(e)["protection"] == "SEP"
+               and e["eppAgent"].get("componentVersion") == "latestVersion")
+    old = sep["eppAgent"]["componentVersion"]
+    sep["eppAgent"]["componentVersion"] = "outdatedVersion"  # Trend flipped it (new pattern out / agent updated)
+    try:
+        DETAIL_CALLS.clear()
+        collect(a)
+        assert DETAIL_CALLS == [sep["agentGuid"]]  # only the changed SEP agent is re-read, inside the TTL
+    finally:
+        sep["eppAgent"]["componentVersion"] = old
     collect(b)
     with SessionLocal() as s:
         latest = reports.global_latest(s)
