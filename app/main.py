@@ -133,8 +133,53 @@ def index(request: Request):
             card = _client_card(s, c)
             eps = s.scalars(select(Endpoint).where(Endpoint.client_id == c.id)).all()
             card["inv"] = collector.inventory(eps, card["summary"])
+            card["conn"] = _connectivity(c)
+            card["c1ws_top"] = _c1ws_top(c.c1ws, n=50)
+            card["sep_trend"] = _sep_trend(s, c.id)
             cards.append(card)
-    return templates.TemplateResponse(request, "index.html", {"cards": cards})
+    return templates.TemplateResponse(request, "index.html", {"cards": cards, "fleet": _fleet(cards)})
+
+
+def _sep_trend(s, client_id: int, days: int = 7, points: int = 28) -> list[float]:
+    """SEP compliance % over the last week, thinned to about `points` values for a sparkline."""
+    snaps = s.scalars(select(Snapshot).where(Snapshot.client_id == client_id,
+                                             Snapshot.taken_at >= utcnow() - timedelta(days=days))
+                      .order_by(Snapshot.taken_at)).all()
+    vals = [x for x in (((sn.summary or {}).get("sep_widget") or {}).get("pct") for sn in snaps) if x is not None]
+    step = max(1, len(vals) // points)
+    return vals[::step][-points:] if len(vals) > 1 else []
+
+
+def _fleet(cards: list[dict]) -> dict:
+    """Cross-client numbers for the Home widgets. Online/offline comes from each product's own console."""
+    from collections import Counter, defaultdict
+    f = {"managed": 0, "types": Counter(), "sep": Counter(), "c1ws": Counter(), "attention": Counter(),
+         "online": Counter(), "offline": Counter(), "issues": defaultdict(list), "clients": len(cards)}
+    for c in cards:
+        dep = {k: n for k, _, n in c["inv"]["deployment"]}
+        f["managed"] += dep.get("all", 0)
+        for k in ("SEP", "SWP", "Sensor only"):
+            f["types"][k] += dep.get(k, 0)
+        sw = (c["summary"] or {}).get("sep_widget") or {}
+        for k in ("compliant", "outdated", "offline7"):
+            f["sep"][k] += sw.get(k) or 0
+        for k, n in ((c["summary"] or {}).get("c1ws") or {}).items():
+            f["c1ws"][k] += n or 0
+        for k, _, n in c["inv"]["immediate"] + c["inv"]["recommended"]:
+            if k != "unmanaged":
+                f["attention"][k] += n
+        for prod, v in c["conn"].items():
+            if v.get("total") is not None:
+                f["online"][prod] += v["online"]
+                f["offline"][prod] += v["offline"]
+        for issue, n in c["c1ws_top"]:
+            f["issues"][issue].append((c["id"], c["name"], n))
+    rated = f["sep"]["compliant"] + f["sep"]["outdated"]
+    f["sep_pct"] = round(100 * f["sep"]["compliant"] / rated, 1) if rated else None
+    f["top_issues"] = sorted(((i, sum(n for *_, n in v), v) for i, v in f["issues"].items()),
+                             key=lambda x: -x[1])[:6]
+    f["attention_total"] = sum(f["attention"].values())
+    return f
 
 
 @app.get("/api/overview")

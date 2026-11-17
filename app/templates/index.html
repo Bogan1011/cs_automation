@@ -1,10 +1,91 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="bar head">
-  <div><h1>Home</h1><p class="muted small">One card per client. Open a client for its full Endpoint Inventory. Data syncs every 5 min.</p></div>
+  <div><h1>Home</h1><p class="muted small">Every client at a glance. Click any row to drill in. Data syncs every 5 min.</p></div>
   <div class="actions"><button id="syncall" title="Pull fresh data for every client now">↻ Sync all now</button></div>
 </div>
 
+{% macro spark(vals, w=84, h=26) %}{% if vals | length > 1 %}
+  {% set lo = [vals | min, 0] | max - 2 %}{% set hi = [vals | max, lo + 4] | max %}
+  <svg class="spark" viewBox="0 0 {{ w }} {{ h }}" width="{{ w }}" height="{{ h }}" aria-hidden="true">
+    <polyline fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" points="{% for v in vals %}{{ '%.1f' % (2 + loop.index0 * (w - 4) / (vals | length - 1)) }},{{ '%.1f' % (h - 3 - (v - lo) * (h - 6) / (hi - lo)) }} {% endfor %}"/>
+  </svg>{% else %}<span class="spark none muted">–</span>{% endif %}{% endmacro %}
+{% macro pct(n, t) %}{{ (100 * n / t) | round(2) if t else 0 }}%{% endmacro %}
+{% set F = fleet %}
+<section class="kpis4">
+  <div class="card k4"><span class="k4l">Managed endpoints</span><b>{{ F.managed }}</b>
+    <span class="k4s"><em>SEP</em> {{ F.types['SEP'] }} · <em>SWP</em> {{ F.types['SWP'] }} · <em>Sensor</em> {{ F.types['Sensor only'] }}</span></div>
+  <div class="card k4"><span class="k4l">SEP pattern compliance</span><b class="{{ 'good' if F.sep_pct and F.sep_pct >= 80 else ('mid' if F.sep_pct and F.sep_pct >= 60 else 'low') }}">{{ '%.0f' % F.sep_pct if F.sep_pct is not none else '–' }}<small>%</small></b>
+    <span class="k4s"><i class="d ok"></i>{{ F.sep['compliant'] }} compliant · <i class="d bad"></i>{{ F.sep['outdated'] }} outdated</span></div>
+  <div class="card k4"><span class="k4l">Server &amp; Workload problems</span><b>{{ F.c1ws['critical'] + F.c1ws['warning'] }}</b>
+    <span class="k4s"><i class="d bad"></i>{{ F.c1ws['critical'] }} critical · <i class="d orange"></i>{{ F.c1ws['warning'] }} warning</span></div>
+  <div class="card k4"><span class="k4l">Needs attention</span><b class="{{ 'low' if F.attention_total else 'good' }}">{{ F.attention_total }}</b>
+    <span class="k4s">{{ F.attention['deploy_failed'] }} deploy failed · {{ F.attention['sensor_disabled'] }} sensor off · {{ F.attention['sensor_update'] }} update</span></div>
+</section>
+
+<section class="fgrid">
+  <article class="card fw">
+    <header><h3>SEP compliance by client</h3><span class="muted small">Antivirus patterns · 7-day trend</span></header>
+    <ul class="frows">
+    {% for c in cards %}{% set sw = (c.summary or {}).get('sep_widget') or {} %}{% set sc, so, sp = sw.get('compliant') or 0, sw.get('outdated') or 0, sw.get('pct') %}{% set r = sc + so %}
+      <li><a href="/endpoints?client={{ c.id }}&filter=sep_outdated" title="Open {{ c.name }}'s outdated agents">
+        <span class="fn">{{ c.name }}</span>
+        <span class="fbar"><i class="ok" style="width:{{ pct(sc, r) }}"></i><i class="bad" style="width:{{ pct(so, r) }}"></i></span>
+        <b class="fv">{{ '%.0f' % sp ~ '%' if sp is not none else '–' }}</b>
+        {{ spark(c.sep_trend) }}</a></li>
+    {% endfor %}
+    </ul>
+    <footer class="muted small"><i class="d ok"></i>compliant <i class="d bad"></i>outdated · {{ F.sep['offline7'] }} offline 7d+ not counted</footer>
+  </article>
+
+  <article class="card fw">
+    <header><h3>Server &amp; Workload by client</h3><span class="muted small">Computer status from the SWP console</span></header>
+    <ul class="frows">
+    {% for c in cards %}{% set k = (c.summary or {}).get('c1ws') %}
+      <li>{% if k %}{% set t = k.critical + k.warning + k.managed + k.unmanaged %}
+        <a href="/clients/{{ c.id }}/c1ws?status=critical"><span class="fn">{{ c.name }}</span>
+        <span class="fbar"><i class="bad" style="width:{{ pct(k.critical, t) }}"></i><i class="orange" style="width:{{ pct(k.warning, t) }}"></i><i class="ok" style="width:{{ pct(k.managed, t) }}"></i><i class="gray" style="width:{{ pct(k.unmanaged, t) }}"></i></span>
+        <span class="fnums"><b class="cbad">{{ k.critical }}</b><b class="corange">{{ k.warning }}</b></span></a>
+      {% else %}<span class="na"><span class="fn">{{ c.name }}</span><span class="muted small">SWP console not connected</span></span>{% endif %}</li>
+    {% endfor %}
+    </ul>
+    <footer class="muted small"><i class="d bad"></i>critical <i class="d orange"></i>warning <i class="d ok"></i>managed <i class="d gray"></i>unmanaged</footer>
+  </article>
+
+  <article class="card fw">
+    <header><h3>Online now</h3><span class="muted small">From the Apex One and Server &amp; Workload consoles</span></header>
+    <ul class="frows conn">
+    {% for c in cards %}{% for prod, label in [('SEP', 'SEP'), ('SWP', 'SWP')] %}{% set v = c.conn[prod] %}
+      <li>{% if v.get('total') is not none %}<a href="/clients/{{ c.id }}"><span class="fn">{{ c.name.split(' - ')[0] }} <em class="ptag {{ prod | lower }}">{{ label }}</em></span>
+        <span class="fbar"><i class="ok" style="width:{{ pct(v.online, v.total) }}"></i><i class="bad" style="width:{{ pct(v.offline, v.total) }}"></i></span>
+        <span class="fnums"><b>{{ v.online }}</b><span class="muted">/ {{ v.total }}</span></span></a>
+      {% else %}<span class="na"><span class="fn">{{ c.name.split(' - ')[0] }} <em class="ptag {{ prod | lower }}">{{ label }}</em></span><span class="muted small">{{ 'Apex One' if prod == 'SEP' else 'SWP' }} console not connected</span></span>{% endif %}</li>
+    {% endfor %}{% endfor %}
+    </ul>
+  </article>
+
+  <article class="card fw wide">
+    <header><h3>Top Server &amp; Workload issues</h3><span class="muted small">On critical and warning computers, all clients</span></header>
+    {% if F.top_issues %}<ul class="frows issues">
+    {% for issue, n, per in F.top_issues %}
+      <li><span class="fn">{{ issue }}</span>
+        <span class="chips">{% for cid, cname, cn in per %}<a class="cchip" href="/clients/{{ cid }}/c1ws?status=all&issue={{ issue | urlencode }}">{{ cname.split(' - ')[0] }} <b>{{ cn }}</b></a>{% endfor %}</span>
+        <b class="fv cbad">{{ n }}</b></li>
+    {% endfor %}</ul>
+    {% else %}<p class="muted">No issues reported, or the SWP console isn't connected yet.</p>{% endif %}
+  </article>
+
+  <article class="card fw">
+    <header><h3>Needs attention</h3><span class="muted small">From Endpoint Inventory</span></header>
+    <table class="amx"><thead><tr><th></th><th title="Deployment failed">Deploy failed</th><th title="Sensor disabled">Sensor off</th><th title="Sensor update recommended">Update</th></tr></thead><tbody>
+    {% for c in cards %}{% set f = {} %}{% for k, _, n in c.inv.immediate + c.inv.recommended %}{% set _ = f.update({k: n}) %}{% endfor %}
+      <tr><td class="fn">{{ c.name }}</td>
+      {% for k in ['deploy_failed', 'sensor_disabled', 'sensor_update'] %}<td>{% if f.get(k) %}<a class="chip {{ 'red' if k == 'deploy_failed' else 'blue' }}" href="/endpoints?client={{ c.id }}&filter={{ k }}">{{ f[k] }}</a>{% else %}<span class="chip zero">0</span>{% endif %}</td>{% endfor %}</tr>
+    {% endfor %}</tbody></table>
+  </article>
+</section>
+
+<h2 class="sect">Clients</h2>
 <section class="homegrid">
 {% for c in cards %}
   {% set s = c.summary or {} %}
@@ -37,9 +118,5 @@
 {% endfor %}
 </section>
 
-<section class="card widgets-soon">
-  <b>Widgets</b>
-  <span class="muted">This space is kept for cross-client widgets you want to add later.</span>
-</section>
 {% endblock %}
 {% block scripts %}<script>startHome();</script>{% endblock %}

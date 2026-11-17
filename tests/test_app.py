@@ -283,7 +283,7 @@ def test_home_page_and_inventory_counts():
     with TestClient(app) as http:
         http.post("/login", data={"username": "admin", "password": "pw"})
         home = http.get("/")
-        assert home.status_code == 200 and "Widgets" in home.text and f'href="/clients/{a}"' in home.text
+        assert home.status_code == 200 and "SEP compliance by client" in home.text and "Needs attention" in home.text and f'href="/clients/{a}"' in home.text
         assert ">Home</a>" in http.get(f"/clients/{a}").text  # header nav on client pages
     with SessionLocal() as s:
         eps = s.scalars(select(Endpoint).where(Endpoint.client_id == a)).all()
