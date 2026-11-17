@@ -311,7 +311,7 @@ function startInstaller(clientName, reportTo) {
     $('copy').disabled = !url;
     $('open').href = url || '#';
     const subject = `${clientName}: Trend Micro ${card.dataset.title} installer (${label})`;
-    const body = `Hi,\n\nPlease use the script below to install the ${card.dataset.title} on your ${label} machines:\n\n${url}\n\nRun it with administrator/root rights. Let us know once done or if you face any issue.\n\nRegards,\nEventus Security SOC`;
+    const body = `Hi,\n\nPlease use the script below to install the ${card.dataset.title} on your ${label} machines:\n\n${url}\n\nRun it with administrator/root rights. Let us know once done or if you face any issue.\n\nRegards,\nEventus Security · Customer Success Team`;
     $('mail').href = url ? `mailto:${encodeURIComponent(reportTo || '')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}` : '#';
   }));
   $('back').addEventListener('click', showOs);
