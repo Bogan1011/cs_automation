@@ -14,9 +14,9 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import collector, outlook, reports
+from . import cases, collector, outlook, reports
 from .config import settings
-from .db import Client, Endpoint, SessionLocal, Snapshot, init_db, utcnow
+from .db import Client, Endpoint, SessionLocal, Snapshot, SupportCase, init_db, utcnow
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 BASE = Path(__file__).parent
@@ -61,6 +61,8 @@ async def lifespan(app: FastAPI):
     init_db()
     if settings.enable_scheduler:
         scheduler.add_job(run_poll, "interval", seconds=settings.poll_interval, id="poll",
+                          max_instances=1, coalesce=True, next_run_time=datetime.now(timezone.utc))
+        scheduler.add_job(cases.run_safely, "interval", seconds=settings.poll_interval, id="cases",
                           max_instances=1, coalesce=True, next_run_time=datetime.now(timezone.utc))
         scheduler.start()
     yield
@@ -167,6 +169,8 @@ def client_page(request: Request, client_id: int):
             "sep": sep,
             "c1ws": c.c1ws, "c1ws_top": _c1ws_top(c.c1ws), "swp_connected": bool(c.swp_url and c.swp_key_enc),
             "conn": _connectivity(c),
+            "open_cases": sum(1 for x in s.scalars(select(SupportCase.status).where(SupportCase.client_id == c.id))
+                              if cases.is_open(x)),
             "flags": {e.id: collector.inventory_flags(e) for e in endpoints},
             "patterns": collector.pattern_status(card["summary"] or {}, latest),
             "behind": {e.id: collector.components_behind(e.components, latest.get(e.protection, {})) for e in endpoints},
@@ -260,6 +264,56 @@ def _valid_share_link(url: str) -> bool:
     return u.scheme == "https" and bool(u.netloc) and (u.netloc.endswith(".sharepoint.com")
                                                      or u.netloc.endswith("onedrive.live.com")
                                                      or u.netloc == "1drv.ms")
+
+
+CASE_TABS = {"open": "Open", "closed": "Resolved / closed", "all": "All"}
+
+
+@app.get("/clients/{client_id}/cases", response_class=HTMLResponse)
+def cases_page(request: Request, client_id: int, tab: str = "open", synced: str = ""):
+    """Trend support cases for this client, rebuilt from the case emails (read-only)."""
+    require_login(request)
+    tab = tab if tab in CASE_TABS else "open"
+    with SessionLocal() as s:
+        c = s.get(Client, client_id) or _404()
+        rows = s.scalars(select(SupportCase).where(SupportCase.client_id == c.id)
+                         .order_by(SupportCase.last_update.desc())).all()
+        counts = {"open": sum(1 for r in rows if cases.is_open(r.status)), "all": len(rows)}
+        counts["closed"] = counts["all"] - counts["open"]
+        shown = [r for r in rows if tab == "all" or (tab == "open") == cases.is_open(r.status)]
+        state = s.get(cases.SyncState, "cases_since")
+        return templates.TemplateResponse(request, "cases.html", {
+            "client": {"id": c.id, "name": c.name}, "rows": shown, "tab": tab, "tabs": CASE_TABS, "counts": counts,
+            "tags": ", ".join(cases.client_tags(c)), "custom_tags": c.case_tags, "synced": synced,
+            "configured": bool(settings.graph_tenant_id and settings.graph_client_id and settings.graph_client_secret
+                               and (settings.cases_mailbox or settings.graph_mailbox)),
+            "last_mail": state.value if state else None, "is_open": cases.is_open,
+        })
+
+
+@app.post("/clients/{client_id}/cases/tags")
+def cases_tags(request: Request, client_id: int, tags: str = Form("")):
+    require_login(request)
+    with SessionLocal() as s:
+        c = s.get(Client, client_id) or _404()
+        c.case_tags = ", ".join(t.strip().strip("[]") for t in tags.split(",") if t.strip())[:200]
+        # re-match this client's tags against unassigned cases
+        for sc in s.scalars(select(SupportCase).where(SupportCase.client_id.is_(None))):
+            sc.client_id = cases.match_client(sc.subject, [c])
+        s.commit()
+    return RedirectResponse(f"/clients/{client_id}/cases", status_code=303)
+
+
+@app.post("/clients/{client_id}/cases/sync")
+def cases_sync(request: Request, client_id: int):
+    require_login(request)
+    try:
+        r = cases.sync_cases()
+        msg = f"{r['emails']} new case emails" if r.get("ok") else r.get("error", "failed")
+    except Exception as exc:
+        msg = f"failed: {str(exc)[:200]}"
+    from urllib.parse import quote
+    return RedirectResponse(f"/clients/{client_id}/cases?synced=" + quote(msg), status_code=303)
 
 
 @app.get("/clients/{client_id}/installer", response_class=HTMLResponse)

@@ -464,3 +464,13 @@ dialog.sheet[open] .sheet-in{animation:sheet .4s var(--ease) both}
 .linkbox input{flex:1}
 .sheet-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .sheet-actions .disabled{pointer-events:none;opacity:.45}
+
+/* Support cases */
+.button .cnt{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;border-radius:99px;font-size:12px;background:var(--brand-1);color:var(--on-brand,#fff)}
+table.cases td.csub{max-width:640px}
+table.cases td.csub b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+table.cases td.csub span{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cstat{display:inline-block;padding:4px 10px;border-radius:99px;font-size:12.5px;font-weight:600;border:1px solid}
+.cstat.wait{color:#ff9f0a;border-color:color-mix(in srgb,#ff9f0a 55%,transparent);background:color-mix(in srgb,#ff9f0a 10%,transparent)}
+.cstat.prog{color:#64a8ff;border-color:color-mix(in srgb,#64a8ff 55%,transparent);background:color-mix(in srgb,#64a8ff 10%,transparent)}
+.cstat.done{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 55%,transparent);background:color-mix(in srgb,var(--ok) 10%,transparent)}

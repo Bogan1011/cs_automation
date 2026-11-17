@@ -12,6 +12,7 @@
     </p>
   </div>
   <div class="actions">
+    <a class="button ghost" href="/clients/{{ client.id }}/cases">Support cases{% if open_cases %} <b class="cnt">{{ open_cases }}</b>{% endif %}</a>
     <a class="button ghost" href="/clients/{{ client.id }}/installer">⬇ Agent installer</a>
     <button class="ghost" id="refresh" data-id="{{ client.id }}" title="Pull fresh data for this client now">↻ Sync now</button>
     <a class="button ghost" href="/clients/{{ client.id }}/report.pdf">PDF</a>

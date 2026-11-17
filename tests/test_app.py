@@ -481,3 +481,51 @@ def test_agent_installer_links_saved_and_shown():
         assert "error=" in bad.headers["location"]
     with SessionLocal() as s:
         assert s.get(Client, a).installers == {"c1ws:windows": url}  # bad link rejected, nothing overwritten
+
+
+def test_support_cases_from_emails(monkeypatch):
+    from app import cases
+    from app.config import settings
+    from app.db import SupportCase
+    for k, v in {"graph_tenant_id": "t", "graph_client_id": "c", "graph_client_secret": "s", "graph_mailbox": "me@x.com"}.items():
+        monkeypatch.setattr(settings, k, v)
+    ifl = make_client("IFL - India First Life")
+    mails = [
+        {"subject": "Case TM-04118708 created: [IFL] System compatibility error in RHEL XDR Sensor",
+         "receivedDateTime": "2026-11-10T05:00:00Z", "from": {"emailAddress": {"name": "Trend Micro Support", "address": "support@trendmicro.com"}},
+         "bodyPreview": "Thank you for contacting us.", "webLink": "https://outlook/1"},
+        {"subject": "RE: TM-04118708 [IFL] System compatibility error in RHEL XDR Sensor",
+         "receivedDateTime": "2026-11-12T05:00:00Z", "from": {"emailAddress": {"name": "Trend Micro Support", "address": "support@trendmicro.com"}},
+         "bodyPreview": "Your case status has been changed to Waiting for Customer Verification. Please confirm.", "webLink": "https://outlook/2"},
+        {"subject": "TM-04032776 [IFL] AMSP service not starting", "receivedDateTime": "2026-11-11T05:00:00Z",
+         "from": {"emailAddress": {"address": "support@trendmicro.com"}}, "bodyPreview": "This case is now Resolved.", "webLink": ""},
+        {"subject": "Lunch on Friday?", "receivedDateTime": "2026-11-11T06:00:00Z", "from": {"emailAddress": {"address": "a@b.c"}}},
+        {"subject": "TM-04000001 [BLI] Something else", "receivedDateTime": "2026-11-11T07:00:00Z", "from": {"emailAddress": {"address": "support@trendmicro.com"}}},
+    ]
+    calls = []
+
+    def handler(req):
+        if "login.microsoftonline.com" in req.url.host:
+            return httpx.Response(200, json={"access_token": "tok"})
+        assert req.method == "GET" and req.url.path == "/v1.0/users/me@x.com/messages"  # read only
+        calls.append(req.url)
+        return httpx.Response(200, json={"value": mails})
+
+    r = cases.sync_cases(transport=httpx.MockTransport(handler))
+    assert r == {"ok": True, "emails": 4}
+    with SessionLocal() as s:
+        a = s.get(SupportCase, "TM-04118708")
+        assert (a.client_id, a.status, a.emails, a.last_link) == (ifl, "Waiting for Customer Verification", 2, "https://outlook/2")
+        assert a.subject.startswith("[IFL] System compatibility")
+        assert s.get(SupportCase, "TM-04032776").status == "Resolved"
+        assert s.get(SupportCase, "TM-04000001").client_id is None  # no client with tag BLI yet
+    assert cases.sync_cases(transport=httpx.MockTransport(handler))["emails"] == 0  # watermark: nothing re-counted
+    with TestClient(app) as http:
+        http.post("/login", data={"username": "admin", "password": "pw"})
+        assert ">1</b>" in http.get(f"/clients/{ifl}").text.split("Support cases")[1][:40]
+        page = http.get(f"/clients/{ifl}/cases").text
+        assert "TM-04118708" in page and "Waiting for Customer Verification" in page and "TM-04032776" not in page
+        assert "TM-04032776" in http.get(f"/clients/{ifl}/cases?tab=closed").text
+        bl = make_client("Bandhan Life")
+        http.post(f"/clients/{bl}/cases/tags", data={"tags": "[BLI]"})
+        assert "TM-04000001" in http.get(f"/clients/{bl}/cases").text

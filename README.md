@@ -89,6 +89,13 @@ Once these are connected, the next poll matches computers to endpoints by host n
 
 The dashboard only calls `POST /users/{mailbox}/messages`, which creates a draft. It never sends mail.
 
+### Support cases from email
+
+The same app reads Trend support case emails (subjects with `TM-12345678`) every 5 minutes with `GET /users/{mailbox}/messages`.
+It only reads. Mail.ReadWrite already covers this. Set `CASES_MAILBOX` if the case emails go to a different mailbox than `GRAPH_MAILBOX`.
+Cases are matched to a client by the tag in the subject, like `[IFL]`. You can change the tag at the bottom of the client's Support cases page.
+To read new emails right away, run `docker compose exec app python -m app.cli sync-cases`.
+
 ## Branding
 
 The Docker build downloads the Eventus logo from eventussecurity.com into `app/static/brand/`. To use a different file, put a white-on-transparent logo at `app/static/brand/logo.webp` and rebuild. Brand colours are the CSS variables at the top of `app/static/style.css`.

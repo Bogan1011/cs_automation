@@ -23,7 +23,9 @@ class Client(Base):
     api_key_enc: Mapped[str] = mapped_column(Text)
     report_to: Mapped[str] = mapped_column(String(500), default="")
     # Agent installer share links: {"c1ws:windows": url, "c1ws_xdr:linux": url, ...}
-    installers: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # comma-separated recipients for the draft
+    installers: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Subject tags that mark this client's Trend support cases, e.g. "IFL" for "[IFL] ..." (comma-separated)
+    case_tags: Mapped[str] = mapped_column(String(200), default="")
     # Optional product-console APIs for exact pattern versions
     swp_url: Mapped[str] = mapped_column(String(300), default="")
     swp_key_enc: Mapped[str] = mapped_column(Text, default="")
@@ -83,6 +85,28 @@ class EndpointDetail(Base):
     # Detail-only "recommendedActions" (install/deploy problems). NULL = not fetched since this column was added.
     actions: Mapped[str | None] = mapped_column(Text, nullable=True)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SupportCase(Base):
+    """A Trend Micro support case (TM-xxxxxxxx), rebuilt from the case emails in the Microsoft 365 mailbox."""
+    __tablename__ = "support_cases"
+    case_no: Mapped[str] = mapped_column(String(20), primary_key=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id", ondelete="SET NULL"), nullable=True, index=True)
+    subject: Mapped[str] = mapped_column(String(500), default="")
+    status: Mapped[str] = mapped_column(String(80), default="Open")
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_update: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_from: Mapped[str] = mapped_column(String(200), default="")
+    last_preview: Mapped[str] = mapped_column(Text, default="")
+    last_link: Mapped[str] = mapped_column(Text, default="")
+    emails: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class SyncState(Base):
+    """Small key/value store for sync watermarks (e.g. the newest case email already read)."""
+    __tablename__ = "sync_state"
+    key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")
 
 
 class Snapshot(Base):

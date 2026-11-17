@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ client.name }} · Support cases{% endblock %}
+{% block content %}
+<div class="bar head">
+  <div>
+    <a href="/clients/{{ client.id }}" class="back">‹ {{ client.name }}</a>
+    <h1>Support cases</h1>
+    <p class="muted small">Trend Micro cases, read from the case emails in Outlook. Matched by subject tag <b>[{{ tags | upper }}]</b>.
+      {% if last_mail %}Newest email read <span class="ts">{{ last_mail }}</span>.{% endif %}</p>
+  </div>
+  <div class="actions">
+    <form method="post" action="/clients/{{ client.id }}/cases/sync"><button type="submit" class="ghost">↻ Check emails now</button></form>
+    <a class="button ghost" href="https://success.trendmicro.com/en-US/case-list/" target="_blank" rel="noopener">Business Success ↗</a>
+  </div>
+</div>
+{% if synced %}<p class="okmsg">{{ synced }}</p>{% endif %}
+{% if not configured %}<p class="err">Microsoft 365 isn't connected yet. Set GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET and CASES_MAILBOX in .env (the app needs Mail.Read), then restart.</p>{% endif %}
+
+<nav class="stabs">
+  {% for k, label in tabs.items() %}<a href="?tab={{ k }}" class="{{ 'on' if tab == k }}">{{ label }} <b>{{ counts.get(k, 0) }}</b></a>{% endfor %}
+</nav>
+
+<div class="tablewrap list">
+<table class="compact cases"><thead><tr><th>Case</th><th>Subject / latest update</th><th>Status</th><th>Last update</th><th>From</th></tr></thead><tbody>
+{% for r in rows %}
+<tr>
+  <td class="mono nowrap">{% if r.last_link %}<a href="{{ r.last_link }}" target="_blank" rel="noopener" title="Open the latest email in Outlook">{{ r.case_no }}</a>{% else %}{{ r.case_no }}{% endif %}</td>
+  <td class="csub"><b>{{ r.subject }}</b><span class="muted">{{ r.last_preview }}</span></td>
+  <td class="nowrap"><span class="cstat {{ 'done' if not is_open(r.status) else ('wait' if 'Customer' in r.status else 'prog') }}">{{ r.status }}</span></td>
+  <td class="nowrap">{% if r.last_update %}<span class="seen" data-t="{{ r.last_update.isoformat() }}"></span>{% else %}–{% endif %}</td>
+  <td class="nowrap muted">{{ r.last_from or '–' }}</td>
+</tr>
+{% else %}
+<tr><td colspan="5" class="muted">No {{ 'open ' if tab == 'open' }}cases for {{ client.name }} yet.</td></tr>
+{% endfor %}
+</tbody></table>
+</div>
+
+<details class="card fold">
+  <summary><span>Case subject tag</span><span class="muted small">Cases are matched to {{ client.name }} by a tag in the subject, like [IFL]. Separate several with commas.</span></summary>
+  <form method="post" action="/clients/{{ client.id }}/cases/tags" class="linkform">
+    <label><span>Tags</span><input name="tags" value="{{ custom_tags }}" placeholder="{{ tags | upper }}"></label>
+    <div><button type="submit">Save</button></div>
+  </form>
+</details>
+{% endblock %}
+{% block scripts %}<script>document.querySelectorAll('.seen').forEach(e => e.textContent = seenText(e.dataset.t));</script>{% endblock %}

@@ -37,6 +37,9 @@ class Settings:
     graph_client_id: str = field(default_factory=lambda: _env("GRAPH_CLIENT_ID"))
     graph_client_secret: str = field(default_factory=lambda: _env("GRAPH_CLIENT_SECRET"))
     graph_mailbox: str = field(default_factory=lambda: _env("GRAPH_MAILBOX"))
+    # Trend support cases are read from this mailbox (defaults to GRAPH_MAILBOX). Needs Graph Mail.Read.
+    cases_mailbox: str = field(default_factory=lambda: _env("CASES_MAILBOX"))
+    cases_backfill_days: int = field(default_factory=lambda: int(_env("CASES_BACKFILL_DAYS", "120")))
     enable_scheduler: bool = field(default_factory=lambda: _env("ENABLE_SCHEDULER", "1") == "1")
 
     @property
