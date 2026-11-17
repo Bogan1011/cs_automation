@@ -1,4 +1,10 @@
 {% extends "base.html" %}
+{% block backdrop %}
+<video class="bg-media" autoplay muted loop playsinline poster="/static/bg/poster.jpg" aria-hidden="true">
+  <source src="/static/bg/background.mp4" type="video/mp4">
+</video>
+<div class="bg-shade" aria-hidden="true"></div>
+{% endblock %}
 {% block content %}
 <form class="login card" method="post" action="/login">
   <div class="logo">{% include "_logo.html" %}</div>
@@ -9,3 +15,7 @@
   <button>Sign in</button>
 </form>
 {% endblock %}
+{% block scripts %}<script>
+document.documentElement.classList.add('has-video');
+if (matchMedia('(prefers-reduced-motion: reduce)').matches) document.querySelector('.bg-media')?.pause();
+</script>{% endblock %}
