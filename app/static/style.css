@@ -18,6 +18,20 @@
   --fg:#111527; --muted:#646c84; --line:rgba(17,21,39,.08); --ok:#1f9d48; --bad:#d70015; --warn:#b58100;
   --shadow:0 10px 30px rgba(20,24,50,.08); color-scheme:light;
 }
+/* Navy theme: Navy #14213D, Cream #F4EDE0, Coral #FF6B5B */
+:root[data-theme="navy"]{
+  --brand-1:#FF6B5B; --brand-2:#FF9F7A; --brand-grad:linear-gradient(135deg,#FF6B5B,#FF9F7A);
+  --bg:#14213D; --bg-2:#0f1a31; --card:rgba(30,46,82,.72); --card-solid:#1c2c4f; --card-hover:rgba(38,57,99,.88);
+  --fg:#F4EDE0; --muted:#aeb0b4; --line:rgba(244,237,224,.10);
+  --ok:#3ccf91; --bad:#e8434f; --warn:#f4c95d;
+  --shadow:0 10px 30px rgba(5,10,24,.45); --on-brand:#14213D; --brand-glow:rgba(255,107,91,.3); color-scheme:dark;
+}
+:root[data-theme="navy"] body{background-image:radial-gradient(1200px 600px at 85% -10%,rgba(255,107,91,.14),transparent 60%),
+  radial-gradient(900px 500px at -10% 0%,rgba(244,237,224,.06),transparent 60%)}
+:root[data-theme="navy"] .wicon.sep,:root[data-theme="navy"] .iico.xdr{background:linear-gradient(135deg,#FF6B5B,#FF9F7A)}
+:root[data-theme="navy"] .wicon.swp,:root[data-theme="navy"] .iico.c1ws{background:linear-gradient(135deg,#3b5b9a,#6c8fd0)}
+:root[data-theme="navy"] .ptag.swp{color:#9fb8ec;background:rgba(108,143,208,.18)}
+:root[data-theme="navy"] dialog.sheet::backdrop{background:rgba(10,16,32,.6)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html{scroll-behavior:smooth}
 body{margin:0;min-height:100vh;font:15px/1.47 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",Roboto,sans-serif;
@@ -50,9 +64,9 @@ h2{font-size:19px;font-weight:650;letter-spacing:-.015em;margin:32px 0 12px}
 
 /* Buttons */
 button,.button{appearance:none;border:0;border-radius:999px;padding:9px 18px;font:inherit;font-weight:600;cursor:pointer;
-  text-decoration:none;display:inline-flex;align-items:center;gap:6px;color:#fff;background:var(--brand-grad);
-  box-shadow:0 6px 18px rgba(230,0,126,.28);transition:transform .25s var(--ease),box-shadow .25s var(--ease),opacity .2s}
-button:hover,.button:hover{transform:translateY(-1px);box-shadow:0 10px 24px rgba(230,0,126,.35)}
+  text-decoration:none;display:inline-flex;align-items:center;gap:6px;color:var(--on-brand,#fff);background:var(--brand-grad);
+  box-shadow:0 6px 18px var(--brand-glow,rgba(230,0,126,.28));transition:transform .25s var(--ease),box-shadow .25s var(--ease),opacity .2s}
+button:hover,.button:hover{transform:translateY(-1px);box-shadow:0 10px 24px var(--brand-glow,rgba(230,0,126,.35))}
 button:active,.button:active{transform:scale(.96)}
 button.ghost,.button.ghost{background:var(--card);color:var(--fg);box-shadow:none;border:1px solid var(--line);
   backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}

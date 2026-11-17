@@ -5,7 +5,8 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 document.getElementById('theme')?.addEventListener('click', () => {
   const dark = matchMedia('(prefers-color-scheme: dark)').matches;
   const cur = document.documentElement.dataset.theme || (dark ? 'dark' : 'light');
-  const next = cur === 'dark' ? 'light' : 'dark';
+  const order = ['dark', 'light', 'navy'];  // Eventus dark, Eventus light, Navy / Cream / Coral
+  const next = order[(order.indexOf(cur) + 1) % order.length];
   document.documentElement.dataset.theme = next;
   try { localStorage.setItem('theme', next); } catch (e) {}
 });

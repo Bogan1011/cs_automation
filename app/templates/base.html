@@ -23,7 +23,7 @@
   </nav>
   {% endif %}
   <div class="right">
-    <button class="ghost" id="theme" type="button" title="Switch light/dark" aria-label="Switch light/dark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg></button>
+    <button class="ghost" id="theme" type="button" title="Switch theme (dark, light, navy)" aria-label="Switch theme"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg></button>
     {% if request.session.get('user') %}
     <form method="post" action="/logout"><button class="ghost">Log out</button></form>
     {% endif %}
