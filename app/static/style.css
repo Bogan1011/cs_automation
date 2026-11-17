@@ -732,3 +732,27 @@ table.amx thead th{background:none!important}
 .clogo.lg{height:48px;padding:6px 12px;border-radius:12px;margin-right:4px}
 .clogo.lg img{height:36px!important;max-width:170px}
 h1.ctitle{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+
+/* Logo without the dark box: the white wordmark sits straight on the glass (light theme keeps a chip so white text stays readable) */
+.brand-logo,.login .logo,:root[data-theme="navy"] .brand-logo{background:none!important;border:0!important;box-shadow:none!important;padding:0 4px}
+:root[data-theme="light"] .brand-logo{background:#14182a!important;padding:6px 12px}
+@media (prefers-color-scheme:light){:root:not([data-theme]) .brand-logo{background:#14182a!important;padding:6px 12px}}
+
+/* Sign-in: compact card on the left, opposite the swirl, with a soft entrance */
+.has-video main{display:flex;align-items:center;min-height:calc(100vh - 120px);padding-left:clamp(0px,6vw,110px)}
+.has-video .login{width:340px;max-width:100%;margin:0;padding:26px 24px;gap:12px;border-radius:24px;
+  background:linear-gradient(160deg,rgba(255,255,255,.14),rgba(255,255,255,.04));border-color:rgba(255,255,255,.22);
+  box-shadow:0 30px 70px rgba(4,6,20,.55),inset 0 1px 0 rgba(255,255,255,.18);
+  backdrop-filter:blur(26px) saturate(150%);-webkit-backdrop-filter:blur(26px) saturate(150%)}
+.has-video .login .logo{align-self:flex-start;padding:0}
+.has-video .login .logo img{height:30px}
+.has-video .login h1{text-align:left;font-size:22px;margin:4px 0 2px}
+.has-video .login input{padding:10px 13px;border-radius:12px;transition:border-color .3s var(--ease),box-shadow .3s var(--ease),background .3s}
+.has-video .login input:focus{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.6);box-shadow:0 0 0 4px rgba(240,54,127,.22)}
+.has-video .login button{padding:11px;border-radius:12px;transition:transform .3s var(--spring),box-shadow .3s}
+.has-video .login button:hover{transform:translateY(-2px)}
+@media (prefers-reduced-motion:no-preference){.has-video .login{animation:loginin .9s var(--ease) both .15s}}
+@keyframes loginin{from{opacity:0;transform:translateX(-24px) scale(.98);filter:blur(6px)}to{opacity:1;transform:none;filter:none}}
+.has-video .bg-media{animation:vidin 1.2s ease both}
+@keyframes vidin{from{opacity:0}to{opacity:1}}
+@media (max-width:700px){.has-video main{justify-content:center;padding-left:0}}

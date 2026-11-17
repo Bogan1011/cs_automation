@@ -9,6 +9,7 @@
 <form class="login card" method="post" action="/login">
   <div class="logo">{% include "_logo.html" %}</div>
   <h1>Sign in</h1>
+  <p class="muted small" style="margin:-6px 0 4px">Vision One Command Centre</p>
   {% if error %}<p class="err">{{ error }}</p>{% endif %}
   <label>Username <input name="username" autocomplete="username" required></label>
   <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
