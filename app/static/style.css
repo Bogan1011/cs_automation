@@ -26,8 +26,26 @@
   --ok:#3ccf91; --bad:#e8434f; --warn:#f4c95d;
   --shadow:0 10px 30px rgba(5,10,24,.45); --on-brand:#14213D; --brand-glow:rgba(255,107,91,.3); color-scheme:dark;
 }
-:root[data-theme="navy"] body{background-image:radial-gradient(1200px 600px at 85% -10%,rgba(255,107,91,.14),transparent 60%),
-  radial-gradient(900px 500px at -10% 0%,rgba(244,237,224,.06),transparent 60%)}
+/* Navy look: blurred coral glow behind ribbed glass, frosted cards, light large type */
+:root[data-theme="navy"] body{background:#14213D;background-image:none}
+:root[data-theme="navy"] body::before,:root[data-theme="navy"] body::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none}
+:root[data-theme="navy"] body::before{
+  background:radial-gradient(38% 46% at 58% 30%,rgba(255,107,91,.55),transparent 70%),
+             radial-gradient(30% 40% at 72% 48%,rgba(232,67,79,.35),transparent 70%),
+             radial-gradient(40% 50% at 18% 38%,rgba(70,104,170,.45),transparent 72%),
+             radial-gradient(60% 50% at 50% 110%,rgba(10,18,38,.9),transparent 70%);
+  filter:blur(40px);transform:scale(1.1)}
+:root[data-theme="navy"] body::after{
+  background:repeating-linear-gradient(90deg,rgba(244,237,224,.045) 0 1px,transparent 1px 7px,rgba(10,18,38,.08) 7px 8px,transparent 8px 12px);
+  mask-image:linear-gradient(180deg,#000 0%,#000 55%,transparent 95%);-webkit-mask-image:linear-gradient(180deg,#000 0%,#000 55%,transparent 95%)}
+:root[data-theme="navy"]{--card:rgba(32,50,92,.38); --card-hover:rgba(44,66,116,.5); --card-solid:#1b2a4c; --line:rgba(244,237,224,.13)}
+:root[data-theme="navy"] .card,:root[data-theme="navy"] .kpi,:root[data-theme="navy"] .tablewrap{
+  backdrop-filter:saturate(140%) blur(26px);-webkit-backdrop-filter:saturate(140%) blur(26px);
+  box-shadow:inset 0 1px 0 rgba(244,237,224,.08),0 20px 50px rgba(5,10,24,.35)}
+:root[data-theme="navy"] .top{background:rgba(20,33,61,.35)}
+:root[data-theme="navy"] h1{font-weight:500;font-size:40px;letter-spacing:-.04em}
+:root[data-theme="navy"] .widget h2,:root[data-theme="navy"] .widget h3{font-weight:550}
+:root[data-theme="navy"] .widget::before{height:2px;opacity:.7}
 :root[data-theme="navy"] .wicon.sep,:root[data-theme="navy"] .iico.xdr{background:linear-gradient(135deg,#FF6B5B,#FF9F7A)}
 :root[data-theme="navy"] .wicon.swp,:root[data-theme="navy"] .iico.c1ws{background:linear-gradient(135deg,#3b5b9a,#6c8fd0)}
 :root[data-theme="navy"] .ptag.swp{color:#9fb8ec;background:rgba(108,143,208,.18)}
