@@ -151,7 +151,8 @@ def _sep_trend(s, client_id: int, days: int = 7, points: int = 28) -> list[float
 
 
 def _fleet(cards: list[dict]) -> dict:
-    """Cross-client numbers for the Home widgets. Online/offline comes from each product's own console."""
+    """Helpers for the Home widgets. Each client's numbers are shown separately; nothing here is shown as a
+    combined total (only issue names are pooled, with a count per client). Online/offline comes from each console."""
     from collections import Counter, defaultdict
     f = {"managed": 0, "types": Counter(), "sep": Counter(), "c1ws": Counter(), "attention": Counter(),
          "online": Counter(), "offline": Counter(), "issues": defaultdict(list), "clients": len(cards)}

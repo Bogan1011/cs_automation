@@ -523,3 +523,11 @@ table.amx .chip{text-decoration:none}
 h2.sect{font-size:20px;font-weight:700;margin:28px 0 0;letter-spacing:-.02em}
 @media (max-width:1180px){.kpis4{grid-template-columns:repeat(2,minmax(0,1fr))}.fgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:760px){.kpis4,.fgrid{grid-template-columns:minmax(0,1fr)}.fw.wide{grid-column:auto}.frows .fn{flex-basis:40%}}
+
+.k4rows{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column}
+.k4rows li{padding:8px 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:2px}
+.k4rows li:first-child{border-top:0;padding-top:2px}
+.k4rows a,.k4rows .na{display:flex;justify-content:space-between;align-items:baseline;gap:10px;text-decoration:none}
+.k4rows .fn{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.k4rows b{font-size:24px;font-weight:750;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.k4rows a:hover .fn{color:var(--brand-1)}
