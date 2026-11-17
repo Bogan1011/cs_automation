@@ -11,6 +11,44 @@ document.getElementById('theme')?.addEventListener('click', () => {
   try { localStorage.setItem('theme', next); } catch (e) {}
 });
 
+// Live clock in the top bar
+(function clock() {
+  const t = document.getElementById('clock-time'), d = document.getElementById('clock-date');
+  if (!t) return;
+  const tick = () => {
+    const n = new Date();
+    t.textContent = n.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false});
+    d.textContent = n.toLocaleDateString([], {weekday: 'short', day: 'numeric', month: 'short'});
+  };
+  tick(); setInterval(tick, 1000);
+})();
+
+// Segmented tabs: a pill slides from the tab you came from to the one you're on
+(function segTabs() {
+  const nav = document.getElementById('tabs'), ind = nav?.querySelector('.seg-ind');
+  const on = nav?.querySelector('a.on');
+  if (!nav || !ind) return;
+  if (!on) { ind.style.opacity = 0; return; }
+  const place = (el, animate) => {
+    ind.style.transition = animate ? '' : 'none';
+    ind.style.width = el.offsetWidth + 'px';
+    ind.style.transform = `translateX(${el.offsetLeft}px)`;
+  };
+  let from = null;
+  try { from = JSON.parse(sessionStorage.getItem('segFrom') || 'null'); } catch (e) {}
+  if (from && from.href !== on.getAttribute('href')) {
+    const prev = [...nav.querySelectorAll('a')].find(a => a.getAttribute('href') === from.href);
+    if (prev) { place(prev, false); ind.offsetWidth; requestAnimationFrame(() => place(on, true)); }
+    else place(on, false);
+  } else place(on, false);
+  ind.classList.add('ready');
+  nav.querySelectorAll('a').forEach(a => a.addEventListener('click', () => {
+    try { sessionStorage.setItem('segFrom', JSON.stringify({href: on.getAttribute('href')})); } catch (e) {}
+  }));
+  addEventListener('resize', () => place(on, false));
+  on.scrollIntoView({block: 'nearest', inline: 'center'});
+})();
+
 // Smooth count-up for numbers
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 function countUp(root = document) {

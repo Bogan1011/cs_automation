@@ -1,22 +1,24 @@
 /* Eventus Security theme. Tweak the tokens below to match brand guidelines exactly. */
 :root{
   --brand-1:#e6007e; --brand-2:#7b2ff7; --brand-grad:linear-gradient(135deg,var(--brand-1),var(--brand-2));
-  --bg:#070b16; --bg-2:#0d1426; --card:rgba(22,30,52,.72); --card-solid:#141c31; --card-hover:rgba(30,40,68,.85);
-  --fg:#eef1f8; --muted:#8e98b3; --line:rgba(255,255,255,.08);
+  --bg:#03050b; --bg-2:#0b0f1a; --card:rgba(255,255,255,.055); --card-solid:#151925; --card-hover:rgba(255,255,255,.09);
+  --fg:#f5f6f7; --muted:rgba(245,246,247,.64); --line:rgba(255,255,255,.11);
   --ok:#30d158; --bad:#ff453a; --warn:#ffd60a;
-  --radius:18px; --radius-sm:12px; --shadow:0 10px 30px rgba(0,0,0,.35);
-  --ease:cubic-bezier(.22,1,.36,1);
+  --specular:rgba(255,255,255,.07);
+  --radius:22px; --radius-sm:14px; --shadow:0 12px 40px rgba(0,0,0,.45),0 2px 6px rgba(0,0,0,.2);
+  --ease:cubic-bezier(.22,1,.36,1); --spring:cubic-bezier(.34,1.56,.64,1);
+  --font-num:ui-rounded,"SF Pro Rounded",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   color-scheme:dark;
 }
-@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){
-  --bg:#f2f3f8; --bg-2:#e8eaf3; --card:rgba(255,255,255,.78); --card-solid:#fff; --card-hover:rgba(255,255,255,.95);
-  --fg:#111527; --muted:#646c84; --line:rgba(17,21,39,.08); --ok:#1f9d48; --bad:#d70015; --warn:#b58100;
-  --shadow:0 10px 30px rgba(20,24,50,.08); color-scheme:light;
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]):not([data-theme="navy"]){
+  --bg:#eef1f6; --bg-2:#e4e8f0; --card:rgba(255,255,255,.66); --card-solid:#f7f8fb; --card-hover:rgba(255,255,255,.9);
+  --fg:#14161a; --muted:rgba(20,22,26,.64); --line:rgba(20,22,26,.09); --ok:#1f9d48; --bad:#d70015; --warn:#b58100;
+  --specular:rgba(255,255,255,.6); --shadow:0 12px 30px rgba(31,41,55,.12),0 2px 6px rgba(31,41,55,.05); color-scheme:light;
 }}
 :root[data-theme="light"]{
-  --bg:#f2f3f8; --bg-2:#e8eaf3; --card:rgba(255,255,255,.78); --card-solid:#fff; --card-hover:rgba(255,255,255,.95);
-  --fg:#111527; --muted:#646c84; --line:rgba(17,21,39,.08); --ok:#1f9d48; --bad:#d70015; --warn:#b58100;
-  --shadow:0 10px 30px rgba(20,24,50,.08); color-scheme:light;
+  --bg:#eef1f6; --bg-2:#e4e8f0; --card:rgba(255,255,255,.66); --card-solid:#f7f8fb; --card-hover:rgba(255,255,255,.9);
+  --fg:#14161a; --muted:rgba(20,22,26,.64); --line:rgba(20,22,26,.09); --ok:#1f9d48; --bad:#d70015; --warn:#b58100;
+  --specular:rgba(255,255,255,.6); --shadow:0 12px 30px rgba(31,41,55,.12),0 2px 6px rgba(31,41,55,.05); color-scheme:light;
 }
 /* Navy theme: Navy #14213D, Cream #F4EDE0, Coral #FF6B5B */
 :root[data-theme="navy"]{
@@ -56,9 +58,7 @@
 html{scroll-behavior:smooth}
 body{margin:0;min-height:100vh;font:15px/1.47 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",Roboto,sans-serif;
   letter-spacing:-.01em;color:var(--fg);background:var(--bg);-webkit-font-smoothing:antialiased;
-  background-image:radial-gradient(1200px 600px at 85% -10%,rgba(123,47,247,.18),transparent 60%),
-                   radial-gradient(900px 500px at -10% 0%,rgba(230,0,126,.14),transparent 60%);
-  background-attachment:fixed}
+  background-image:radial-gradient(140% 100% at 50% 0%,var(--bg-2),var(--bg));background-attachment:fixed}
 main{max-width:1440px;margin:0 auto;padding:20px 16px 48px;animation:rise .5s var(--ease) both}
 a{color:inherit}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
@@ -540,3 +540,118 @@ h2.sect{font-size:20px;font-weight:700;margin:28px 0 0;letter-spacing:-.02em}
 .hcard{border-top:3px solid var(--cc,transparent)}
 .frows .fn.cname{display:flex}
 .cname{color:color-mix(in srgb,var(--cc) 35%,var(--fg))}
+
+
+/* ================= Glass shell (aurora backdrop, floating top bar, segmented tabs) ================= */
+.aurora{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none}
+.blob{position:absolute;border-radius:50%;filter:blur(110px);opacity:.42}
+.b1{width:560px;height:560px;top:-180px;left:-140px;background:radial-gradient(circle,#e6007e,transparent 70%)}
+.b2{width:520px;height:520px;top:-140px;right:-160px;background:radial-gradient(circle,#7b2ff7,transparent 70%)}
+.b3{width:500px;height:500px;bottom:-200px;left:18%;background:radial-gradient(circle,#0a84ff,transparent 70%)}
+.b4{width:460px;height:460px;bottom:-180px;right:8%;background:radial-gradient(circle,#1fb8a8,transparent 72%)}
+:root[data-theme="light"] .blob{opacity:.22;filter:blur(90px)}
+@media (prefers-color-scheme:light){:root:not([data-theme]) .blob{opacity:.22;filter:blur(90px)}}
+:root[data-theme="navy"] .aurora{display:none}
+@media (prefers-reduced-motion:no-preference){
+  .b1{animation:drift1 26s ease-in-out infinite alternate}.b2{animation:drift2 32s ease-in-out infinite alternate}
+  .b3{animation:drift3 29s ease-in-out infinite alternate}.b4{animation:drift1 24s ease-in-out infinite alternate-reverse}}
+@keyframes drift1{to{transform:translate(40px,30px) scale(1.08)}}
+@keyframes drift2{to{transform:translate(-30px,40px) scale(1.05)}}
+@keyframes drift3{to{transform:translate(25px,-35px) scale(1.1)}}
+
+.shell{max-width:1440px;margin:0 auto;padding:16px 16px 0}
+.shell main{max-width:none;padding:6px 0 48px}
+
+/* glass material for every card: translucent fill, top highlight, strong blur */
+.card,.kpi,.tablewrap{background:linear-gradient(180deg,var(--specular),transparent 42%),var(--card);
+  border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);
+  backdrop-filter:blur(30px) saturate(170%);-webkit-backdrop-filter:blur(30px) saturate(170%)}
+
+/* floating top bar */
+.top{position:sticky;top:12px;z-index:20;border-radius:24px;padding:12px 18px;border:1px solid var(--line);
+  background:linear-gradient(180deg,var(--specular),transparent 50%),color-mix(in srgb,var(--card-solid) 62%,transparent);
+  box-shadow:var(--shadow);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%)}
+.top .brand{gap:14px}
+.brand-logo{display:grid;place-items:center;height:42px;padding:6px 12px;border-radius:13px;
+  background:linear-gradient(155deg,rgba(230,0,126,.38),rgba(123,47,247,.38));box-shadow:0 4px 16px rgba(123,47,247,.18);
+  transition:transform .3s var(--spring)}
+.brand:hover .brand-logo{transform:rotate(-3deg) scale(1.04)}
+.brand-logo img{height:26px;width:auto;display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3))}
+.brand-text{display:flex;flex-direction:column;line-height:1.2}
+.brand-text b{font-size:17px;font-weight:700;letter-spacing:-.02em;background:linear-gradient(90deg,#ff4fa8,#a67bff);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.brand-text small{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-weight:600}
+.top .right{gap:12px}
+
+/* sun / moon theme pill */
+.theme-pill{position:relative;width:58px;height:30px;padding:0;border-radius:99px;background:var(--card);border:1px solid var(--line);
+  box-shadow:none;color:var(--muted);display:block;overflow:hidden}
+.theme-pill:hover{transform:none;box-shadow:none;border-color:color-mix(in srgb,var(--fg) 25%,transparent)}
+.theme-pill .knob{position:absolute;top:3px;left:4px;width:22px;height:22px;border-radius:50%;z-index:2;
+  background:linear-gradient(155deg,#4a5568,#1a202c);box-shadow:0 2px 8px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.15);
+  transform:translateX(28px);transition:transform .45s var(--spring),background .4s}
+.theme-pill .ic{position:absolute;top:8px}
+.theme-pill .sun{left:9px}.theme-pill .moon{right:9px;opacity:0}
+:root[data-theme="light"] .theme-pill .knob{transform:none;background:linear-gradient(155deg,#f1c40f,#e67e22);box-shadow:0 2px 8px rgba(241,196,15,.4)}
+:root[data-theme="light"] .theme-pill .sun{opacity:0}:root[data-theme="light"] .theme-pill .moon{opacity:.8}
+:root[data-theme="navy"] .theme-pill .knob{transform:translateX(14px);background:linear-gradient(155deg,#FF6B5B,#FF9F7A)}
+:root[data-theme="navy"] .theme-pill .ic{opacity:0}
+
+.clock{display:flex;flex-direction:column;align-items:flex-end;line-height:1.2;font-family:var(--font-num)}
+.clock b{font-size:15px;font-weight:650;font-variant-numeric:tabular-nums}
+.clock span{font-size:11px;color:var(--muted)}
+.status-pill{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:99px;font-size:12.5px;font-weight:650;white-space:nowrap;
+  color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent);border:1px solid color-mix(in srgb,var(--ok) 45%,transparent)}
+.status-pill i{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
+.status-pill.crit{color:var(--bad);background:color-mix(in srgb,var(--bad) 14%,transparent);border-color:color-mix(in srgb,var(--bad) 45%,transparent)}
+@media (prefers-reduced-motion:no-preference){.status-pill i{animation:blinkdot 2s ease-in-out infinite}}
+@keyframes blinkdot{50%{opacity:.3}}
+.icon-btn{width:36px;height:36px;padding:0;justify-content:center;border-radius:50%}
+
+/* centred segmented client tabs with a sliding pill */
+.segwrap{display:flex;justify-content:center;margin:16px 0 6px}
+.tabs.seg{position:relative;margin:0;padding:4px;gap:2px;border-radius:99px;border:1px solid var(--line);
+  background:linear-gradient(180deg,var(--specular),transparent 50%),var(--card);box-shadow:var(--shadow);
+  backdrop-filter:blur(30px) saturate(170%);-webkit-backdrop-filter:blur(30px) saturate(170%)}
+.tabs.seg a{position:relative;z-index:2;border-radius:99px;padding:9px 18px;font-size:13.5px;font-weight:550;background:none!important;box-shadow:none!important}
+.tabs.seg a.on{color:var(--fg)}
+.seg-ind{position:absolute;z-index:1;top:4px;bottom:4px;left:0;width:0;border-radius:99px;opacity:0;pointer-events:none;
+  background:color-mix(in srgb,var(--fg) 13%,transparent);box-shadow:inset 0 1px 0 var(--specular),0 2px 10px rgba(0,0,0,.2);
+  transition:transform .5s var(--spring),width .5s var(--spring),opacity .3s}
+.seg-ind.ready{opacity:1}
+:root[data-theme="navy"] .seg-ind{background:#FF6B5B;box-shadow:0 4px 14px rgba(255,107,91,.35)}
+:root[data-theme="navy"] .tabs.seg a.on{color:#14213D}
+:root[data-theme="navy"] .tabs.seg a.on i{background:#14213D}
+
+/* numbers: rounded iOS digits */
+.k4 b,.k4rows b,.hc-big b,.wtotal b,.dcenter b,.tile b,.kpi b,.fv,.fnums b{font-family:var(--font-num)}
+
+/* metric icon badges on Home */
+.k4 .k4l{display:flex;align-items:center;gap:10px}
+.k4 .ib{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;color:#fff;flex:none;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 6px 14px rgba(0,0,0,.25);transition:transform .25s var(--spring)}
+.k4:hover .ib{transform:rotate(-6deg) scale(1.08)}
+.ib.blue{background:linear-gradient(145deg,#0a84ff,#5e5ce6)}.ib.pink{background:linear-gradient(145deg,#e6007e,#ff5f8f)}
+.ib.violet{background:linear-gradient(145deg,#7b2ff7,#bf5af2)}.ib.amber{background:linear-gradient(145deg,#ff9f0a,#ff6b3d)}
+.card{transition:transform .25s var(--spring),box-shadow .25s,border-color .25s}
+.k4:hover,.fw:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--fg) 22%,transparent)}
+@media (prefers-reduced-motion:no-preference){
+  .k4,.fw,.hcard,.widget{animation:cardin .5s var(--ease) both}
+  .k4:nth-child(2),.fw:nth-child(2){animation-delay:.05s}.k4:nth-child(3),.fw:nth-child(3){animation-delay:.1s}
+  .k4:nth-child(4),.fw:nth-child(4){animation-delay:.15s}.fw:nth-child(5){animation-delay:.2s}}
+@keyframes cardin{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}
+
+/* sign-in: glass card on the aurora */
+.login{margin-top:14vh;padding:34px 30px;border-radius:28px;gap:16px}
+.login .logo{padding:10px 16px;border-radius:16px;background:linear-gradient(155deg,rgba(230,0,126,.35),rgba(123,47,247,.35));align-self:center}
+.login .logo img{height:34px}
+.login h1{font-size:26px;font-weight:700}
+.login input{border-radius:14px;background:color-mix(in srgb,var(--fg) 6%,transparent)}
+.login button{border-radius:14px}
+
+@media (max-width:900px){.clock{display:none}.brand-text small{display:none}}
+@media (max-width:640px){.brand-text{display:none}.status-pill{padding:7px 10px}.top{top:8px;padding:10px 12px}}
+:root[data-theme="light"] .brand .brand-logo img{filter:drop-shadow(0 1px 2px rgba(0,0,0,.3))}
+@media (prefers-color-scheme:light){:root:not([data-theme]) .brand .brand-logo img{filter:drop-shadow(0 1px 2px rgba(0,0,0,.3))}}
+:root[data-theme="navy"] .brand-text b{background:linear-gradient(90deg,#FF6B5B,#FFB199);-webkit-background-clip:text;background-clip:text}
+:root[data-theme="navy"] .brand-logo{background:linear-gradient(155deg,rgba(255,107,91,.4),rgba(255,159,122,.25))}
