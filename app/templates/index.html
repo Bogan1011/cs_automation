@@ -108,6 +108,7 @@
   {% set act = (c.inv.immediate + c.inv.recommended) | rejectattr(0, 'equalto', 'unmanaged') | list %}
   <a class="card hcard" style="--cc:{{ CC[c.id] }}" href="/clients/{{ c.id }}">
     <div class="hc-top">
+      {% set lg = client_logo(c.name) %}{% if lg %}<span class="clogo"><img src="{{ lg }}" alt=""></span>{% endif %}
       <h3>{{ c.name }}</h3>
       <span class="tag">{{ c.region }}</span>
       {% if c.last_poll_ok == False %}<span class="pill fail"><i></i>Poll failed</span>{% elif c.last_poll_at %}<span class="pill live"><i></i>Live</span>{% endif %}

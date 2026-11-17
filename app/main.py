@@ -33,6 +33,18 @@ def nav_clients():
 templates.env.globals["nav_clients"] = nav_clients
 
 
+def client_logo(name: str) -> str | None:
+    """/static/clients/<slug>.png|svg|webp if a logo was added for this client (slug: 'IFL - India First Life' -> 'ifl-india-first-life')."""
+    slug = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
+    for ext in ("svg", "png", "webp", "jpg"):
+        if (BASE / "static" / "clients" / f"{slug}.{ext}").exists():
+            return f"/static/clients/{slug}.{ext}"
+    return None
+
+
+templates.env.globals["client_logo"] = client_logo
+
+
 def _asset_version() -> str:
     """Changes whenever a static file changes, so browsers never keep an old stylesheet after an update."""
     import hashlib

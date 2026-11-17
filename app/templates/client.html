@@ -5,7 +5,7 @@
 
 <div class="bar head">
   <div>
-    <h1>{{ client.name }} <span class="tag">{{ client.region }}</span></h1>
+    <h1 class="ctitle">{% set lg = client_logo(client.name) %}{% if lg %}<span class="clogo lg"><img src="{{ lg }}" alt=""></span>{% endif %}{{ client.name }} <span class="tag">{{ client.region }}</span></h1>
     <p class="muted small">
       Updated <span class="ts">{{ client.last_poll_at or 'never' }}</span> · refreshes every 5 min
       {% if client.last_poll_ok == False %}<span class="err">· last poll failed: {{ client.last_error }}</span>{% endif %}
