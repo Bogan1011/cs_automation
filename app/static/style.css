@@ -531,3 +531,12 @@ h2.sect{font-size:20px;font-weight:700;margin:28px 0 0;letter-spacing:-.02em}
 .k4rows .fn{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .k4rows b{font-size:24px;font-weight:750;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
 .k4rows a:hover .fn{color:var(--brand-1)}
+
+/* Each client gets its own colour tag on Home, so rows from different clients stand apart */
+.cname{display:inline-flex;align-items:center;gap:8px;min-width:0}
+.cname .cc{flex:none;width:10px;height:10px;border-radius:3px;background:var(--cc);box-shadow:0 0 0 3px color-mix(in srgb,var(--cc) 22%,transparent)}
+.cchip{border-color:color-mix(in srgb,var(--cc,var(--line)) 55%,transparent);background:color-mix(in srgb,var(--cc,transparent) 14%,transparent)}
+.cchip::before{content:"";width:8px;height:8px;border-radius:2px;background:var(--cc)}
+.hcard{border-top:3px solid var(--cc,transparent)}
+.frows .fn.cname{display:flex}
+.cname{color:color-mix(in srgb,var(--cc) 35%,var(--fg))}
