@@ -1,14 +1,11 @@
 const fmtTime = iso => iso ? new Date(iso).toLocaleString() : 'never';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-// Theme toggle (remembered per browser)
+// Theme toggle: Dark (Indigo/Celadon/Gold) and Light (same palette), remembered per browser
 document.getElementById('theme')?.addEventListener('click', () => {
-  const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-  const cur = document.documentElement.dataset.theme || (dark ? 'dark' : 'light');
-  const order = ['gold', 'light', 'dark', 'navy'];  // Indigo/Celadon/Gold (default), light, Eventus dark, Navy
-  const next = order[(order.indexOf(cur) + 1) % order.length];
+  const next = document.documentElement.dataset.theme === 'gold-light' ? 'gold' : 'gold-light';
   document.documentElement.dataset.theme = next;
-  try { localStorage.setItem('theme2', next); } catch (e) {}
+  try { localStorage.setItem('theme3', next); } catch (e) {}
 });
 
 // Live clock in the top bar

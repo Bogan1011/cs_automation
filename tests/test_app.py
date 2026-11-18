@@ -582,3 +582,14 @@ def test_remove_client_deletes_keys_and_data(capsys):
     cli.main(["remove-client", "--all", "--yes"])
     with SessionLocal() as s:
         assert s.query(Client).count() == 0
+
+
+def test_wrong_password_signs_out_an_existing_session():
+    with TestClient(app) as http:
+        assert http.post("/login", data={"username": "admin", "password": "pw"}, follow_redirects=False).status_code == 303
+        assert http.get("/library", follow_redirects=False).status_code == 200
+        assert http.post("/login", data={"username": "admin", "password": "wrong"}).status_code == 401
+        assert http.get("/library", follow_redirects=False).status_code in (303, 401)
+        http.post("/login", data={"username": "admin", "password": "pw"})
+        http.get("/login")  # opening the sign-in page also signs out
+        assert http.get("/library", follow_redirects=False).status_code in (303, 401)

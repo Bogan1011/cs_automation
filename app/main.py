@@ -106,6 +106,7 @@ async def unauthorized(request: Request, exc):
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
+    request.session.clear()  # opening the sign-in page signs you out, so a wrong password never leaves an old session behind
     return templates.TemplateResponse(request, "login.html", {"error": None})
 
 
@@ -115,6 +116,7 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     match = next((u for u in users if hmac.compare_digest(username.strip().lower().encode(), u.lower().encode())), None)
     ok = match is not None and hmac.compare_digest(password.encode(), users[match].encode())
     if not ok:
+        request.session.clear()
         return templates.TemplateResponse(request, "login.html", {"error": "Wrong username or password"},
                                           status_code=401)
     request.session["user"] = match

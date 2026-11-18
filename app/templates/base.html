@@ -5,7 +5,7 @@
 <meta name="theme-color" content="#0B1325">
 <link rel="icon" href="/static/brand/favicon.ico">
 <title>{% block title %}CS Console{% endblock %}</title>
-<script>(function(){var t='gold';try{t=localStorage.getItem('theme2')||'gold'}catch(e){}document.documentElement.dataset.theme=t})()</script>
+<script>(function(){var t=null;try{t=localStorage.getItem('theme3')}catch(e){}if(t!=='gold'&&t!=='gold-light'){t=matchMedia('(prefers-color-scheme: light)').matches?'gold-light':'gold'}document.documentElement.dataset.theme=t})()</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="/static/style.css?v={{ asset_v }}">
@@ -20,7 +20,7 @@
     <span class="brand-text"><b>CS Command Centre</b><small>Eventus Security · Customer Success</small></span>
   </a>
   <div class="right">
-    <button class="theme-pill" id="theme" type="button" title="Switch theme (dark, light, navy)" aria-label="Switch theme">
+    <button class="theme-pill" id="theme" type="button" title="Switch between dark and light" aria-label="Switch theme">
       <span class="knob"></span>
       <svg class="ic sun" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.4 1.4M17.6 17.6 19 19M5 19l1.4-1.4M17.6 6.4 19 5"/></svg>
       <svg class="ic moon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>
