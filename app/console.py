@@ -380,23 +380,29 @@ def library_delete(request: Request, case_id: int):
 # ---------- Trend articles ----------
 
 @router.get("/articles", response_class=HTMLResponse)
-def articles_page(request: Request, kind: str = "", q: str = "", synced: str = ""):
+def articles_page(request: Request, kind: str = "", q: str = "", synced: str = "", src: str = ""):
     _user(request)
     with SessionLocal() as s:
         stmt = select(TrendArticle)
         if kind:
             stmt = stmt.where(TrendArticle.kind == kind)
+        if src in articles.SOURCE_LABELS:
+            stmt = stmt.where(TrendArticle.sources.ilike(f"%{src}%"))
         for word in q.split():
             like = f"%{word}%"
             stmt = stmt.where(or_(TrendArticle.title.ilike(like), TrendArticle.summary.ilike(like),
                                   TrendArticle.solution.ilike(like), TrendArticle.ka.ilike(like)))
-        rows = s.scalars(stmt.order_by(TrendArticle.ka.desc()).limit(200)).all()
+        rows = s.scalars(stmt.order_by(TrendArticle.ka.desc()).limit(400)).all()
+        every = s.scalars(select(TrendArticle.sources)).all()
+        src_counts = {k: sum(1 for x in every if k in (x or "").split()) for k in articles.SOURCE_LABELS}
         kinds = dict(s.execute(select(TrendArticle.kind, func.count()).group_by(TrendArticle.kind)).all())
         last = s.scalar(select(func.max(TrendArticle.first_seen)))
         week = utcnow() - timedelta(days=7)
-        return _render(request, "console/articles.html", {"rows": rows, "kind": kind, "q": q, "kinds": kinds,
-                                                           "synced": synced, "last": last, "week": week,
-                                                           "sources": settings.article_sources, "junk": articles.is_junk})
+        return _render(request, "console/articles.html", {
+            "pinned": [r for r in rows if r.pinned], "rows": [r for r in rows if not r.pinned], "kind": kind, "q": q,
+            "src": src, "kinds": kinds, "src_counts": src_counts, "total": len(every), "SOURCES": articles.SOURCE_LABELS,
+            "synced": synced, "last": last, "week": week, "sources": settings.article_sources,
+            "junk": articles.is_junk, "every_min": settings.article_interval_minutes})
 
 
 @router.post("/articles/sync")

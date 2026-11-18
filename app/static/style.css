@@ -1160,3 +1160,13 @@ html{scroll-behavior:auto}
 @media (max-width:900px){.srows .kbhead{display:none}.srows .kbrow>summary{grid-template-columns:1fr auto}.srows .kbrow>summary>span:nth-child(2),.srows .kbrow>summary>span:nth-child(3){display:none}}
 .arows .kt b{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.35}
 .srows .os-chip{justify-self:start}
+.arows .kbhead,.arows .kbrow>summary{grid-template-columns:minmax(0,1fr) 190px 120px 110px 120px 28px}
+.srcs{display:flex;flex-wrap:wrap;gap:4px}
+.src{font-size:11px;font-weight:650;padding:2px 8px;border-radius:99px;border:1px solid var(--line);white-space:nowrap}
+.src.s-vision-one{color:#9DB4E0;border-color:rgba(157,180,224,.45)}
+.src.s-endpoint-workload{color:#A9CDBE;border-color:rgba(169,205,190,.45)}
+.src.s-apex-saas{color:#F2B53A;border-color:rgba(242,181,58,.45)}
+:root[data-theme="gold-light"] .src.s-vision-one{color:#3F5C99}:root[data-theme="gold-light"] .src.s-endpoint-workload{color:#3E7A63}:root[data-theme="gold-light"] .src.s-apex-saas{color:#8A5D00}
+.arows.pinned{border-color:color-mix(in srgb,var(--brand-1) 45%,transparent)}
+.arows .kbrow.pin>summary{box-shadow:inset 3px 0 0 var(--brand-1)}
+@media (max-width:900px){.arows .kbrow>summary>span.srcs{display:none}}

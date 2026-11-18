@@ -142,10 +142,12 @@ def test_trend_articles_picked_up_automatically():
         assert "remote code execution" in a.summary and a.solution.startswith("Apply the latest Apache patch")
         assert "Related" not in a.solution
         assert s.get(TrendArticle, "KA-0024996").kind == "Notice"
+        assert set(a.sources.split()) == {"vision-one", "endpoint-workload", "apex-saas"} and a.pinned
     with TestClient(app) as http:
         login(http)
         page = http.get("/articles").text
-        assert "Apply the latest Apache patch" in page and "KA-0024996" in page
+        assert "Apply the latest Apache patch" in page and "KA-0024996" in page and "Highlighted by Trend now" in page
+        assert "Apex One SaaS" in http.get("/articles?src=apex-saas").text
         assert "Apache HTTP Server" in http.get("/").text
 
 

@@ -7,7 +7,7 @@ Only public pages are read. Nothing is sent to Trend except plain page requests.
 import logging
 import re
 from html.parser import HTMLParser
-from urllib.parse import urljoin
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import httpx
 from sqlalchemy import select
@@ -182,28 +182,74 @@ def read_article(html: str) -> dict:
     return {"title": title, "summary": summary, "solution": solution, "published": date}
 
 
-def sync(transport: httpx.BaseTransport | None = None, max_new: int = 20) -> int:
-    """Look for new articles. Returns how many were added."""
+SOURCE_LABELS = {"vision-one": "Vision One", "endpoint-workload": "Endpoint & Workload (Cloud One)",
+                 "apex-saas": "Apex One SaaS"}
+_SOURCE_KEYS = {"trend-vision-one": "vision-one", "cloud-one---endpoint-and-workload-security": "endpoint-workload",
+                "apex-one-as-a-service": "apex-saas"}
+
+
+def source_key(url: str) -> str:
+    name = (parse_qs(urlparse(url).query).get("name") or [""])[0]
+    return _SOURCE_KEYS.get(name, name[:30] or "other")
+
+
+def page_links(html: str, base: str, limit: int = 25) -> list[str]:
+    """Other pages of the same product listing (?name=...&page=2 and similar), if the page links them."""
+    src = urlparse(base)
+    name = parse_qs(src.query).get("name")
+    out = []
+    for href, _ in parse(html).links:
+        u = urlparse(urljoin(base, href or ""))
+        q = parse_qs(u.query)
+        if u.path == src.path and q.get("name") == name and any("page" in k.lower() or k.lower() in ("p", "skip") for k in q):
+            full = u.geturl()
+            if full not in out and full != base:
+                out.append(full)
+    return out[:limit]
+
+
+def sync(transport: httpx.BaseTransport | None = None, max_new: int = 40) -> int:
+    """Look for new articles on every product page. Returns how many were added."""
     added = 0
+    now = utcnow()
     with httpx.Client(transport=transport, timeout=25, follow_redirects=True, headers={"User-Agent": UA}) as http, \
             SessionLocal() as s:
         for src in settings.article_sources:
+            key = source_key(src)
             try:
                 r = http.get(src)
                 r.raise_for_status()
             except httpx.HTTPError as exc:
                 log.warning("article list %s failed: %s", src, exc)
                 continue
-            for ka, a in find_articles(r.text, str(r.url)).items():
+            first = find_articles(r.text, str(r.url))  # the page's own list = Trend's highlighted advisories
+            found = dict(first)
+            for extra in page_links(r.text, str(r.url)):
+                try:
+                    pr = http.get(extra)
+                    pr.raise_for_status()
+                    for ka, a in find_articles(pr.text, str(pr.url)).items():
+                        found.setdefault(ka, a)
+                except httpx.HTTPError as exc:
+                    log.warning("article page %s failed: %s", extra, exc)
+            for row in s.scalars(select(TrendArticle).where(TrendArticle.pinned.is_(True))):
+                if key in (row.sources or "").split() and row.ka not in first:
+                    row.pinned = False
+            for ka, a in found.items():
                 row = s.get(TrendArticle, ka)
                 if row is None:
                     row = TrendArticle(ka=ka, title=a["title"], url=a["url"], kind=kind_of(a["title"]),
-                                       product=_product(a["title"]))
+                                       product=_product(a["title"]), sources="")
                     s.add(row)
                     added += 1
                 elif a["title"] and not row.title:
                     row.title = a["title"]
-        s.commit()
+                if key not in (row.sources or "").split():
+                    row.sources = ((row.sources or "") + " " + key).strip()
+                if ka in first:
+                    row.pinned = True
+                row.last_listed = now
+            s.commit()
         for row in s.scalars(select(TrendArticle).where(TrendArticle.fetched_at.is_not(None))):
             if is_junk(row.summary) and is_junk(row.solution):  # read again with the better parser
                 row.fetched_at = None

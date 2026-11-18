@@ -18,6 +18,11 @@ def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
 
 
+_TS = "https://success.trendmicro.com/en-US/product/?name="
+DEFAULT_ARTICLE_SOURCES = [_TS + "trend-vision-one", _TS + "cloud-one---endpoint-and-workload-security",
+                           _TS + "apex-one-as-a-service"]
+
+
 @dataclass
 class Settings:
     database_url: str = field(default_factory=lambda: _env("DATABASE_URL", "sqlite:///./data/dashboard.db"))
@@ -43,9 +48,9 @@ class Settings:
     # More sign-ins for the team: "akshay:password1,colleague:password2". DASHBOARD_USER keeps working too.
     dashboard_users_raw: str = field(default_factory=lambda: _env("DASHBOARD_USERS"))
     # Public Trend Business Success pages to read for the latest articles (comma-separated).
-    article_sources_raw: str = field(default_factory=lambda: _env(
-        "TREND_ARTICLE_URLS", "https://success.trendmicro.com/en-US/product/?name=trend-vision-one"))
-    article_interval_minutes: int = field(default_factory=lambda: int(_env("ARTICLE_INTERVAL_MINUTES", "180")))
+    # The three product pages below are always read; TREND_ARTICLE_URLS adds more.
+    article_sources_raw: str = field(default_factory=lambda: _env("TREND_ARTICLE_URLS"))
+    article_interval_minutes: int = field(default_factory=lambda: int(_env("ARTICLE_INTERVAL_MINUTES", "10")))
     # Our own team's mail domains: their replies in a case thread count as the solution side (with Trend's).
     team_domains_raw: str = field(default_factory=lambda: _env("TEAM_EMAIL_DOMAINS", "eventussecurity.com"))
     enable_scheduler: bool = field(default_factory=lambda: _env("ENABLE_SCHEDULER", "1") == "1")
@@ -68,7 +73,11 @@ class Settings:
 
     @property
     def article_sources(self) -> list[str]:
-        return [u.strip() for u in self.article_sources_raw.split(",") if u.strip()]
+        out = list(DEFAULT_ARTICLE_SOURCES)
+        for u in self.article_sources_raw.split(","):
+            if u.strip() and u.strip() not in out:
+                out.append(u.strip())
+        return out
 
     @property
     def graph_configured(self) -> bool:

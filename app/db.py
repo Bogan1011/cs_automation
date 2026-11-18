@@ -191,6 +191,11 @@ class TrendArticle(Base):
     published: Mapped[str] = mapped_column(String(40), default="")
     first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Which Business Success product page(s) list it ("vision-one apex-saas"), and whether it is in a page's
+    # highlighted "Product advisories" list right now.
+    sources: Mapped[str] = mapped_column(String(120), default="")
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_listed: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 def _engine():

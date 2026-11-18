@@ -104,7 +104,7 @@ The home page is the team's internal console. It uses no client API data.
 - **Work board** (`/work`): who is working on which client issue, its status (Open, In progress, Waiting on client, Waiting on Trend, Resolved), priority, Trend case number and a history of every update.
 - **Case library** (`/library`): finished cases with the issue, root cause and solution highlighted. Paste the closure email and press *Read the email* to fill the fields, then check and save. When a work item is resolved, *Save to case library* copies it across.
 - **Scripts** (`/scripts`): read-only health checks in `troubleshooting/<deep-security|xdr|apex-one>/`. Add a `.ps1` (with a `.SYNOPSIS` block) or `.sh` (with comment lines at the top) there and rebuild to show it.
-- **Trend articles** (`/articles`): the latest Vision One articles from Trend Business Success, read every `ARTICLE_INTERVAL_MINUTES` (default 180) from `TREND_ARTICLE_URLS`. Each new article page is read once for its summary and solution.
+- **Trend articles** (`/articles`): articles from the Trend Business Success pages for Vision One, Endpoint & Workload Security (Cloud One) and Apex One as a Service, read every `ARTICLE_INTERVAL_MINUTES` (default 10). `TREND_ARTICLE_URLS` adds more pages. The advisories Trend shows at the top of each product page are highlighted. Each new article page is read once for its summary and solution.
 - **Tools** (`/tools`): links to Trend's official tools, for example OneDrive share links.
 
 Give each teammate their own sign-in so updates show who made them: `DASHBOARD_USERS=akshay:password1,colleague:password2` in `.env`, then `docker compose up -d`.
