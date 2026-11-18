@@ -985,3 +985,22 @@ pre.code{font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;o
 :root[data-theme="gold"] code.run{background:#0E182E;border:1px solid var(--line);color:#CFE3DA}
 :root[data-theme="gold"] .okmsg{color:#A9CDBE}
 :root[data-theme="gold"] .timeline .chg{background:rgba(169,205,190,.12);color:#CFE3DA}
+
+/* Full mail trail pop-up */
+dialog.mailsheet{max-width:min(980px,calc(100vw - 32px))}
+.mailsheet .sheet-in{max-height:calc(100vh - 48px);display:flex;flex-direction:column;padding:18px 20px}
+.mail-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.mail-h h2{margin:0;font-size:19px}.mail-h p{margin:2px 0 0}
+.mail-h .actions{display:flex;gap:6px;flex-wrap:wrap}
+.mail-list,.mail-raw{overflow:auto;padding-top:12px;display:flex;flex-direction:column;gap:10px}
+.mail-list.oldest{flex-direction:column-reverse;justify-content:flex-end}
+.mail-list[hidden],.mail-raw[hidden]{display:none}
+.mail{border:1px solid var(--line);border-left:4px solid var(--mc,var(--line));border-radius:12px;padding:10px 14px}
+.mail.m-trend{--mc:#30d158}.mail.m-team{--mc:#0a84ff}.mail.m-client{--mc:#ff9f0a}
+:root[data-theme="gold"] .mail.m-trend{--mc:#A9CDBE}:root[data-theme="gold"] .mail.m-team{--mc:#F2B53A}:root[data-theme="gold"] .mail.m-client{--mc:#8C93A8}
+.mail-meta{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.mail-meta .tag{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mc);border:1px solid var(--mc);border-radius:999px;padding:1px 8px}
+.mail-meta .nowrap{margin-left:auto}
+.mail-to{margin-top:2px;overflow-wrap:anywhere}
+.mail .pre{font-size:14px;overflow-wrap:anywhere}
+@media (max-width:640px){.mail-h{flex-direction:column}.mail-meta .nowrap{margin-left:0}}

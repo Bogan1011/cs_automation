@@ -326,6 +326,17 @@ def library_item(request: Request, case_id: int, edit: int = 0):
         return _render(request, "console/library_item.html", {"c": c, "similar": similar})
 
 
+@router.get("/library/{case_id}/mail", response_class=HTMLResponse)
+def library_mail(request: Request, case_id: int):
+    """The full mail trail of a case, shown in a pop-up."""
+    _user(request)
+    with SessionLocal() as s:
+        c = s.get(KnowledgeCase, case_id)
+        if not c:
+            raise HTTPException(404)
+        return _render(request, "console/_mail.html", {"c": c, "msgs": kb.trail(c.raw_email or "")})
+
+
 @router.post("/library/{case_id}/delete")
 def library_delete(request: Request, case_id: int):
     _user(request)

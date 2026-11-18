@@ -410,3 +410,21 @@ def test_solution_comes_from_trend_and_our_team_across_the_chain():
     assert got["issue"] == ("AMSP service not starting\n\nWe attempted to repair the ds agent; however, the issue persists "
                             "and the AMSP service still fails to start after a reboot.")
     assert got["root_cause"].startswith("As per the shared screenshot the service is not starting because of")
+
+
+def test_full_mail_trail_keeps_every_message():
+    msgs = kb.trail(CHAIN)
+    assert len(msgs) >= 3
+    assert any(m["kind"] == "trend" for m in msgs)
+    assert all(m["body"] for m in msgs)
+    assert not any(l.lower().startswith(("from:", "sent:", "subject:")) for m in msgs for l in m["body"].splitlines()[:1])
+    with TestClient(app) as http:
+        login(http)
+        r = http.post("/library", data={"title": "[ABC] Mail trail check", "product": "xdr", "issue": "x",
+                                        "solution": "y", "raw_email": CHAIN, "closed_on": "2026-11-17"})
+        cid = r.url.path.rsplit("/", 1)[-1]
+        assert 'data-mail="/library/%s/mail"' % cid in r.text
+        assert 'data-mail="/library/%s/mail"' % cid in http.get("/library").text
+        pop = http.get(f"/library/{cid}/mail").text
+        assert "Full mail trail" in pop and "Trend support" in pop and pop.count('class="mail m-') == len(msgs)
+        assert http.get("/library/999/mail").status_code == 404

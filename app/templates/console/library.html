@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "console/_m.html" import prod, icon with context %}
+{% from "console/_m.html" import prod, icon, mail_btn, mail_dialog with context %}
 {% block title %}Case library · CS Console{% endblock %}
 {% block content %}
 <div class="bar head">
@@ -36,11 +36,12 @@
       <div class="hl issue"><em>Issue</em><div class="pre">{{ c.issue or '–' }}</div></div>
       {% if c.root_cause %}<div class="hl cause"><em>Root cause</em><div class="pre">{{ c.root_cause }}</div></div>{% endif %}
       <div class="hl solution"><em>Solution</em><div class="pre">{{ c.solution or 'Not written yet' }}</div></div>
-      <div class="kbact"><a class="button ghost small-btn" href="/library/{{ c.id }}?edit=1">Edit</a><a class="button ghost small-btn" href="/library/{{ c.id }}">Full page</a><span class="muted small">added by {{ c.added_by }}</span></div>
+      <div class="kbact"><a class="button ghost small-btn" href="/library/{{ c.id }}?edit=1">Edit</a><a class="button ghost small-btn" href="/library/{{ c.id }}">Full page</a>{{ mail_btn(c) }}<span class="muted small">added by {{ c.added_by }}</span></div>
     </div>
   </details>
   {% else %}
   <p class="muted pad">{{ 'Nothing matches these filters.' if q or product or client else 'No cases yet. Add one by uploading the case mail.' }}</p>
   {% endfor %}
 </div>
+{{ mail_dialog() }}
 {% endblock %}

@@ -257,6 +257,36 @@ def _date(raw: str) -> str:
     return m.group(2) if m else ""
 
 
+_HEAD = re.compile(r"^\s*(from|sent|date|to|cc|bcc|subject|importance)\s*:\s*(.*)$", re.I)
+
+
+def trail(text: str) -> list[dict]:
+    """The whole mail chain as separate messages, newest first, with nothing removed except the
+    From/Sent/To/Cc/Subject header lines (shown separately). Used for the 'Full mail trail' view."""
+    out = []
+    for raw in split_thread(text or ""):
+        head, body, in_head = {}, [], True
+        for line in raw.splitlines():
+            m = _HEAD.match(line) if in_head else None
+            if m:
+                head.setdefault(m.group(1).lower(), m.group(2).strip())
+                continue
+            if in_head and (re.match(r"^\s*(-{2,}\s*original message\s*-{2,}|_{8,})\s*$", line, re.I) or not line.strip()):
+                continue
+            in_head = False
+            body.append(line.rstrip())
+        kind, name = _who(raw)
+        if not head.get("from"):
+            kind, name = ("team", "Latest mail") if not out else ("unknown", "")
+        body_text = re.sub(r"\n{3,}", "\n\n", "\n".join(body)).strip()
+        if not body_text and not head.get("from"):
+            continue
+        out.append({"kind": kind, "name": name or head.get("from", "") or "Unknown sender",
+                    "from": head.get("from", ""), "date": head.get("sent") or head.get("date", ""),
+                    "to": head.get("to", ""), "cc": head.get("cc", ""), "body": body_text})
+    return out
+
+
 def summarize(text: str, subject: str = "", sender: str = "") -> dict:
     """Whole mail chain -> case entry. Headings ("Issue:", "Resolution:") win when present. Otherwise the solution
     comes from Trend support's replies and our own team's replies (never the client's): our team's closing

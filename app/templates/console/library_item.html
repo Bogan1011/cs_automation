@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% from "console/_m.html" import prod, when with context %}
+{% from "console/_m.html" import prod, when, mail_btn, mail_dialog with context %}
 {% block title %}{{ c.title }} · Case library{% endblock %}
 {% block content %}
 <div class="bar head">
   <div><a href="/library" class="back">‹ Case library</a><h1 class="wtitle">{{ c.title }}</h1>
     <p class="wmeta">{{ prod(c.product) }}<span><b>{{ c.client or 'No client' }}</b></span>{% if c.case_no %}<span class="mono">{{ c.case_no }}</span>{% endif %}{% if c.closed_on %}<span class="muted">closed {{ c.closed_on.strftime('%d %b %Y') }}</span>{% endif %}<span class="muted small">added by {{ c.added_by }}</span></p></div>
-  <div class="actions"><a class="button ghost" href="/library/{{ c.id }}?edit=1">Edit</a><button class="ghost" id="copy" type="button">Copy issue &amp; solution</button></div>
+  <div class="actions"><a class="button ghost" href="/library/{{ c.id }}?edit=1">Edit</a>{{ mail_btn(c, "") }}<button class="ghost" id="copy" type="button">Copy issue &amp; solution</button></div>
 </div>
 <section class="kbdetail">
   <div class="card hl issue big"><em>Issue</em><div class="pre">{{ c.issue or '–' }}</div></div>
@@ -13,7 +13,7 @@
   <div class="card hl solution big"><em>Solution</em><div class="pre">{{ c.solution or 'Not written yet' }}</div></div>
 </section>
 {% if similar %}<h3 class="sub-h">Similar cases</h3><ul class="alist card">{% for x in similar %}<li><a href="/library/{{ x.id }}"><b>{{ x.title }}</b><span class="muted small">{{ x.client }} · {{ PRODUCTS[x.product] }}</span></a></li>{% endfor %}</ul>{% endif %}
-{% if c.raw_email %}<details class="card fold"><summary><span>Original email</span></summary><div class="pre muted">{{ c.raw_email }}</div></details>{% endif %}
+{{ mail_dialog() }}
 <form method="post" action="/library/{{ c.id }}/delete" class="danger" onsubmit="return confirm('Delete this case from the library?')"><button class="ghost small-btn" type="submit">Delete</button></form>
 {% endblock %}
 {% block scripts %}<script>

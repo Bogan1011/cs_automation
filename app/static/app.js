@@ -323,3 +323,32 @@ function startInstaller(clientName, reportTo) {
   });
   dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
 }
+
+// Case library: "Full mail trail" pop-up
+(function () {
+  const dlg = document.getElementById('mailbox');
+  if (!dlg) return;
+  const body = document.getElementById('mailbody');
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-mail]');
+    if (b) {
+      e.preventDefault(); e.stopPropagation();
+      body.innerHTML = '<p class="muted pad">Loading…</p>';
+      dlg.showModal();
+      try {
+        const r = await fetch(b.dataset.mail, { headers: { 'Accept': 'text/html' } });
+        body.innerHTML = r.ok ? await r.text() : '<p class="muted pad">Could not load the mail.</p>';
+      } catch (_) { body.innerHTML = '<p class="muted pad">Could not load the mail.</p>'; }
+      return;
+    }
+    if (!dlg.open) return;
+    if (e.target === dlg || e.target.closest('[data-mail-close]')) { dlg.close(); return; }
+    const o = e.target.closest('[data-mail-order]');
+    if (o) { const l = body.querySelector('.mail-list'); l.classList.toggle('oldest');
+      o.textContent = l.classList.contains('oldest') ? 'Newest first' : 'Oldest first'; return; }
+    const raw = e.target.closest('[data-mail-raw]');
+    if (raw) { const m = body.querySelector('[data-view="msgs"]'), p = body.querySelector('[data-view="raw"]');
+      const showRaw = p.hidden; p.hidden = !showRaw; m.hidden = showRaw;
+      raw.textContent = showRaw ? 'By message' : 'Plain text'; }
+  });
+})();
