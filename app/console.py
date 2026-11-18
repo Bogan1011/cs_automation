@@ -18,7 +18,7 @@ from .db import KnowledgeCase, SessionLocal, ToolLink, TrendArticle, WorkItem, W
 router = APIRouter()
 ROOT = Path(__file__).resolve().parent.parent / "troubleshooting"
 PRODUCTS = kb.PRODUCTS
-SCRIPT_PRODUCTS = {k: v for k, v in PRODUCTS.items() if k != "other"}
+SCRIPT_PRODUCTS = {k: PRODUCTS[k] for k in ("deep-security", "xdr", "apex-one")}
 STATUSES = ["Open", "In progress", "Waiting on client", "Waiting on Trend", "Resolved"]
 OPEN_STATUSES = STATUSES[:-1]
 PRIORITIES = ["P1", "P2", "P3", "P4"]

@@ -5,10 +5,10 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 document.getElementById('theme')?.addEventListener('click', () => {
   const dark = matchMedia('(prefers-color-scheme: dark)').matches;
   const cur = document.documentElement.dataset.theme || (dark ? 'dark' : 'light');
-  const order = ['dark', 'light', 'navy'];  // Eventus dark, Eventus light, Navy / Cream / Coral
+  const order = ['gold', 'light', 'dark', 'navy'];  // Indigo/Celadon/Gold (default), light, Eventus dark, Navy
   const next = order[(order.indexOf(cur) + 1) % order.length];
   document.documentElement.dataset.theme = next;
-  try { localStorage.setItem('theme', next); } catch (e) {}
+  try { localStorage.setItem('theme2', next); } catch (e) {}
 });
 
 // Live clock in the top bar
