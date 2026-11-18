@@ -5,7 +5,7 @@
 <meta name="theme-color" content="#0B1325">
 <link rel="icon" href="/static/brand/favicon.ico">
 <title>{% block title %}CS Console{% endblock %}</title>
-<script>(function(){var t=null;try{t=localStorage.getItem('theme3')}catch(e){}if(t!=='gold'&&t!=='gold-light'){t=matchMedia('(prefers-color-scheme: light)').matches?'gold-light':'gold'}document.documentElement.dataset.theme=t})()</script>
+<script>(function(){var t=null;try{t=localStorage.getItem('theme3')}catch(e){}if(t!=='gold'&&t!=='gold-light'){t=matchMedia('(prefers-color-scheme: light)').matches?'gold-light':'gold'}if(location.pathname==='/login'){t='gold'}document.documentElement.dataset.theme=t})()</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="/static/style.css?v={{ asset_v }}">
@@ -56,9 +56,7 @@
     <span class="brand-logo">{% include "_logo.html" %}</span>
     <span class="brand-text"><b>CS Command Centre</b><small>Eventus Security · Customer Success</small></span>
   </a>
-  <div class="right">
-    <button class="theme-pill" id="theme" type="button" title="Switch between dark and light" aria-label="Switch theme"><span class="knob"></span></button>
-  </div>
+  <div class="right"></div>
 </header>
 {% endif %}
 <main>{% block content %}{% endblock %}</main>
