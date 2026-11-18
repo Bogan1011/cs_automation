@@ -513,3 +513,49 @@ def test_seed_standard_tools_and_show_them_in_guides():
         assert "/:u:/g/scut.zip" in page
         g = http.get("/troubleshooting/apex-one/uninstall-agent").text
         assert "Trend tools for this" in g and "/:u:/g/scut.zip" in g
+
+
+def test_daily_log_is_dated_automatically_and_grouped_by_day():
+    from datetime import timedelta
+    from app.console import local_now
+    from app.db import DailyEntry
+    with TestClient(app) as http:
+        login(http)
+        assert "Daily log" in http.get("/log").text
+        http.post("/log", data={"kind": "Call", "client": "ABC", "product": "deep-security", "status": "Resolved",
+                                "summary": "DS agents offline after cert renewal, reactivated 3 Linux servers"})
+        http.post("/log", data={"kind": "Email", "client": "XYZ", "product": "apex-one", "status": "Follow-up",
+                                "summary": "Pattern update failing on 12 agents", "trend_case": "TM-04000009"})
+        with SessionLocal() as s:
+            assert {e.day for e in s.query(DailyEntry)} == {local_now().date()}
+            old = s.query(DailyEntry).filter_by(client="XYZ").one()
+            old.day = local_now().date() - timedelta(days=1)
+            eid = old.id
+            s.commit()
+        page = http.get("/log").text
+        assert page.index("Today ·") < page.index("Yesterday ·") and "reactivated 3 Linux servers" in page
+        assert "Pattern update failing" not in http.get("/log?range=today").text
+        assert "reactivated 3 Linux" not in http.get("/log?client=XYZ").text
+        http.post("/log", data={"edit_id": eid, "summary": "Pattern update fixed", "status": "Resolved", "client": "XYZ"})
+        csv = http.get("/log.csv").text
+        assert csv.startswith("Date,Time,Who") and "Pattern update fixed" in csv and "admin" in csv
+        http.post(f"/log/{eid}/delete")
+        assert "Pattern update fixed" not in http.get("/log").text
+
+
+def test_users_with_hashed_passwords_can_sign_in():
+    from app import cli, users
+    from app.db import User
+    assert users.set_password("Rutav", "s3cret-pass") is True
+    assert users.set_password("rutav", "n3w-pass-123") is False
+    with SessionLocal() as s:
+        u = s.query(User).filter_by(name="rutav").one()
+        assert u.role == "admin" and "n3w-pass" not in u.pw_hash
+    with TestClient(app) as http:
+        assert http.post("/login", data={"username": "rutav", "password": "s3cret-pass"}).status_code == 401
+        r = http.post("/login", data={"username": "RUTAV", "password": "n3w-pass-123"}, follow_redirects=False)
+        assert r.status_code == 303
+        assert "rutav" in http.get("/work").text  # shows up as an owner choice
+    cli.main(["remove-user", "rutav"])
+    with TestClient(app) as http:
+        assert http.post("/login", data={"username": "rutav", "password": "n3w-pass-123"}).status_code == 401

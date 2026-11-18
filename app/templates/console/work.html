@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% from "console/_m.html" import prod, stat, pri, when, icon with context %}
+{% from "console/_m.html" import prod, stat, pri, when, icon, worktabs with context %}
 {% block title %}Work board · CS Console{% endblock %}
 {% block content %}
 <div class="bar head">
-  <div><h1>Work board</h1><p class="muted small">Every issue someone is working on, for which client, and where it stands. Add an update whenever something changes.</p></div>
+  <div><h1>Work board</h1><p class="muted small">Longer issues someone owns, for which client, and where they stand. Add an update whenever something changes.</p>{{ worktabs('work', open_total) }}</div>
   <form class="search" method="get"><input type="hidden" name="status" value="{{ status }}"><input name="q" value="{{ q }}" placeholder="Search title, client or case no."></form>
 </div>
 <nav class="stabs">

@@ -120,6 +120,32 @@ class Snapshot(Base):
 
 # ---- Internal Customer Success console (no client API data) ----
 
+class User(Base):
+    """Someone who can sign in to the console."""
+    __tablename__ = "users"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True)
+    pw_hash: Mapped[str] = mapped_column(String(200), default="")
+    role: Mapped[str] = mapped_column(String(20), default="admin")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class DailyEntry(Base):
+    """One thing done today: a call, mail or remote session for a client, with what it was about and where it stands."""
+    __tablename__ = "daily_entries"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    day: Mapped[date] = mapped_column(Date, index=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    author: Mapped[str] = mapped_column(String(80), default="", index=True)
+    kind: Mapped[str] = mapped_column(String(30), default="Call")
+    client: Mapped[str] = mapped_column(String(120), default="")
+    product: Mapped[str] = mapped_column(String(30), default="other")
+    summary: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(30), default="Resolved")
+    trend_case: Mapped[str] = mapped_column(String(40), default="")
+
+
 class WorkItem(Base):
     """An issue someone in the team is working on, so whoever picks it up knows where it stands."""
     __tablename__ = "work_items"

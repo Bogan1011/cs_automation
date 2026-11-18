@@ -53,6 +53,7 @@ class Settings:
     article_interval_minutes: int = field(default_factory=lambda: int(_env("ARTICLE_INTERVAL_MINUTES", "10")))
     # Our own team's mail domains: their replies in a case thread count as the solution side (with Trend's).
     team_domains_raw: str = field(default_factory=lambda: _env("TEAM_EMAIL_DOMAINS", "eventussecurity.com"))
+    timezone: str = field(default_factory=lambda: _env("TIMEZONE", "Asia/Kolkata"))  # for the daily log's dates
     enable_scheduler: bool = field(default_factory=lambda: _env("ENABLE_SCHEDULER", "1") == "1")
 
     @property

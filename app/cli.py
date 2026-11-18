@@ -9,7 +9,7 @@ from collections import Counter, defaultdict
 from sqlalchemy import select
 
 from . import crypto
-from .config import REGIONS
+from .config import REGIONS, settings
 from .db import (Client, Endpoint, EndpointDetail, SessionLocal, Snapshot, SupportCase, SyncState,
                  init_db)
 from .visionone import VisionOneClient
@@ -151,6 +151,12 @@ def main(argv=None):
     st = sub.add_parser("seed-tools", help="add or update the team's standard Trend tools (DSA CUT, SCUT, CDT, ...)")
     st.add_argument("--url", required=True, help="OneDrive/SharePoint link (the shared Tools folder, or a file link)")
     st.add_argument("--only", default="", help="update just one tool by key: dsa-cut, dsa-support-tool, scut, cdt, easyfix-cert")
+    sp = sub.add_parser("set-password", help="create a console user or change their password (asks for it, hidden)")
+    sp.add_argument("name")
+    sp.add_argument("--role", default="admin", choices=["admin", "member"])
+    sub.add_parser("list-users", help="list console users")
+    ru = sub.add_parser("remove-user", help="stop a console user from signing in")
+    ru.add_argument("name")
     sub.add_parser("articles-check", help="show what the Trend article reader finds on each product page (no changes)")
     asy = sub.add_parser("articles-sync", help="read the Trend product pages now and save new articles")
     asy.add_argument("--read", default="30", help="how many article pages to read for their solution text (default 30)")
@@ -231,6 +237,30 @@ def main(argv=None):
                 remove_client(s, c)
             s.commit()
             print(f"Removed {names}")
+        elif args.cmd == "set-password":
+            import getpass
+            from . import users
+            pw = getpass.getpass(f"New password for {args.name.lower()}: ")
+            if len(pw) < 8:
+                sys.exit("Use at least 8 characters.")
+            if getpass.getpass("Type it again: ") != pw:
+                sys.exit("The two passwords don't match.")
+            new = users.set_password(args.name, pw, args.role)
+            print(f"{'Created' if new else 'Updated'} {args.name.lower()} ({args.role}).")
+        elif args.cmd == "list-users":
+            from .db import User
+            for u in s.scalars(select(User).order_by(User.name)):
+                print(f"{u.name:<20} {u.role:<8} {'active' if u.active else 'removed'}")
+            for n in settings.users:
+                print(f"{n:<20} {'admin':<8} from .env")
+        elif args.cmd == "remove-user":
+            from .db import User
+            u = s.scalars(select(User).where(User.name == args.name.lower())).first()
+            if not u:
+                sys.exit(f"No user {args.name!r} in the database (users in .env are removed by editing .env).")
+            u.active = False
+            s.commit()
+            print(f"{u.name} can no longer sign in.")
         elif args.cmd == "seed-tools":
             from .db import ToolLink
             from .toolkit import TOOLS
@@ -382,7 +412,6 @@ def main(argv=None):
             print(sync_cases())
         elif args.cmd == "poll":
             from .collector import collect_all
-            from .config import settings
             if args.all_details:
                 settings.detail_batch = 1_000_000
             failed = False

@@ -11,9 +11,9 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from sqlalchemy import func, or_, select
 
-from . import articles, guides, kb, mailfile
+from . import articles, guides, kb, mailfile, users
 from .config import settings
-from .db import KnowledgeCase, SessionLocal, ToolLink, TrendArticle, WorkItem, WorkUpdate, utcnow
+from .db import DailyEntry, KnowledgeCase, SessionLocal, ToolLink, TrendArticle, WorkItem, WorkUpdate, utcnow
 
 router = APIRouter()
 ROOT = Path(__file__).resolve().parent.parent / "troubleshooting"
@@ -22,6 +22,22 @@ SCRIPT_PRODUCTS = {k: PRODUCTS[k] for k in ("deep-security", "xdr", "apex-one")}
 STATUSES = ["Open", "In progress", "Waiting on client", "Waiting on Trend", "Resolved"]
 OPEN_STATUSES = STATUSES[:-1]
 PRIORITIES = ["P1", "P2", "P3", "P4"]
+LOG_KINDS = ["Call", "Email", "Remote session", "Meeting", "Case update", "Other"]
+LOG_STATUSES = ["Resolved", "In progress", "Follow-up", "Waiting on client", "Escalated to Trend"]
+
+
+def _local_tz():
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(settings.timezone)
+    except Exception:  # no tz database in the image: fall back to India time
+        from datetime import timezone
+        return timezone(timedelta(hours=5, minutes=30))
+
+
+def local_now():
+    from datetime import datetime
+    return datetime.now(_local_tz())
 templates = None  # set by main.py
 
 
@@ -140,6 +156,91 @@ def _clients(s) -> list[str]:
     return sorted(n for n in names if n)
 
 
+# ---------- daily log ----------
+
+RANGES = {"today": 0, "week": 6, "month": 29, "quarter": 89}
+
+
+@router.get("/log", response_class=HTMLResponse)
+def daily_log(request: Request, who: str = "", client: str = "", q: str = "", range: str = "week", edit: int = 0):
+    me = _user(request)
+    today = local_now().date()
+    days = RANGES.get(range, 6)
+    with SessionLocal() as s:
+        stmt = select(DailyEntry).where(DailyEntry.day >= today - timedelta(days=days))
+        if who:
+            stmt = stmt.where(DailyEntry.author == (me if who == "me" else who))
+        if client:
+            stmt = stmt.where(DailyEntry.client == client)
+        for word in q.split():
+            like = f"%{word}%"
+            stmt = stmt.where(or_(DailyEntry.summary.ilike(like), DailyEntry.client.ilike(like), DailyEntry.trend_case.ilike(like)))
+        rows = s.scalars(stmt.order_by(DailyEntry.day.desc(), DailyEntry.at.desc())).all()
+        groups = []
+        for r in rows:
+            if not groups or groups[-1][0] != r.day:
+                groups.append((r.day, []))
+            groups[-1][1].append(r)
+        mine_today = s.scalar(select(func.count()).select_from(DailyEntry).where(DailyEntry.day == today, DailyEntry.author == me))
+        clients = sorted(set(_clients(s)) | set(s.scalars(select(DailyEntry.client).distinct())) - {""})
+        return _render(request, "console/log.html", {
+            "groups": groups, "total": len(rows), "today": today, "who": who, "client": client, "q": q, "range": range,
+            "clients": clients, "people": users.all_names(), "KINDS": LOG_KINDS, "LSTAT": LOG_STATUSES, "edit": edit,
+            "mine_today": mine_today, "tz": _local_tz(), "utc": __import__("datetime").timezone.utc})
+
+
+@router.post("/log")
+def daily_log_add(request: Request, summary: str = Form(...), client: str = Form(""), product: str = Form("other"),
+                  kind: str = Form("Call"), status: str = Form("Resolved"), trend_case: str = Form(""),
+                  edit_id: int = Form(0), back: str = Form("/log")):
+    me = _user(request)
+    if not summary.strip():
+        raise HTTPException(400, "Write what it was about")
+    with SessionLocal() as s:
+        e = s.get(DailyEntry, edit_id) if edit_id else None
+        if e is None:
+            e = DailyEntry(author=me, day=local_now().date())
+            s.add(e)
+        e.summary, e.client = summary.strip()[:2000], client.strip()[:120]
+        e.product = product if product in PRODUCTS else "other"
+        e.kind = kind if kind in LOG_KINDS else "Other"
+        e.status = status if status in LOG_STATUSES else "Resolved"
+        e.trend_case = trend_case.strip()[:40]
+        s.commit()
+    return RedirectResponse(back if back.startswith("/log") else "/log", status_code=303)
+
+
+@router.post("/log/{entry_id}/delete")
+def daily_log_delete(request: Request, entry_id: int):
+    _user(request)
+    with SessionLocal() as s:
+        e = s.get(DailyEntry, entry_id)
+        if e:
+            s.delete(e)
+            s.commit()
+    return RedirectResponse("/log", status_code=303)
+
+
+@router.get("/log.csv")
+def daily_log_csv(request: Request, range: str = "month"):
+    import csv
+    import io
+    _user(request)
+    today = local_now().date()
+    with SessionLocal() as s:
+        rows = s.scalars(select(DailyEntry).where(DailyEntry.day >= today - timedelta(days=RANGES.get(range, 29)))
+                         .order_by(DailyEntry.day, DailyEntry.at)).all()
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["Date", "Time", "Who", "Type", "Client", "Product", "What", "Status", "Trend case"])
+        for r in rows:
+            at = r.at if r.at.tzinfo else r.at.replace(tzinfo=__import__("datetime").timezone.utc)
+            w.writerow([r.day.isoformat(), at.astimezone(_local_tz()).strftime("%H:%M"), r.author, r.kind, r.client,
+                        PRODUCTS.get(r.product, r.product), r.summary, r.status, r.trend_case])
+    return PlainTextResponse(buf.getvalue(), media_type="text/csv",
+                             headers={"Content-Disposition": f'attachment; filename="daily-log-{today}.csv"'})
+
+
 @router.get("/work", response_class=HTMLResponse)
 def work_board(request: Request, status: str = "open", product: str = "", owner: str = "", q: str = ""):
     me = _user(request)
@@ -161,7 +262,7 @@ def work_board(request: Request, status: str = "open", product: str = "", owner:
         counts = dict(s.execute(select(WorkItem.status, func.count()).group_by(WorkItem.status)).all())
         return _render(request, "console/work.html", {
             "items": items, "last": last, "counts": counts, "open_total": sum(counts.get(x, 0) for x in OPEN_STATUSES), "status": status, "product": product, "owner": owner,
-            "q": q, "clients": _clients(s), "users": sorted(settings.users) or [me]})
+            "q": q, "clients": _clients(s), "users": users.all_names() or [me]})
 
 
 @router.post("/work")
@@ -187,7 +288,7 @@ def work_item(request: Request, item_id: int):
         if not w:
             raise HTTPException(404)
         _ = w.updates
-        return _render(request, "console/work_item.html", {"w": w, "users": sorted(set(settings.users) | {w.owner, me} - {""}),
+        return _render(request, "console/work_item.html", {"w": w, "users": sorted(set(users.all_names()) | {w.owner, me} - {""}),
                                                             "clients": _clients(s)})
 
 

@@ -112,10 +112,9 @@ def login_page(request: Request):
 
 @app.post("/login")
 def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    users = settings.users
-    match = next((u for u in users if hmac.compare_digest(username.strip().lower().encode(), u.lower().encode())), None)
-    ok = match is not None and hmac.compare_digest(password.encode(), users[match].encode())
-    if not ok:
+    from .users import authenticate
+    match = authenticate(username, password)
+    if not match:
         request.session.clear()
         return templates.TemplateResponse(request, "login.html", {"error": "Wrong username or password"},
                                           status_code=401)
