@@ -181,7 +181,7 @@ def _paras(text: str) -> list[str]:
 
 
 def clean_title(subject: str) -> str:
-    """'RE: TrendAI™ Technical Support Case TM-04116060 P2 : [ABC] Upgrade guidance CRM:110304116060'
+    """'RE: TrendAI™ Technical Support Case TM-04000002 P2 : [ABC] Upgrade guidance CRM:110300000002'
     -> '[ABC] Upgrade guidance'"""
     t = (subject or "").replace("\xa0", " ")
     t = re.sub(r"^\s*((re|fw|fwd|aw)\s*:\s*)+", "", t, flags=re.I)
