@@ -406,7 +406,7 @@ def articles_page(request: Request, kind: str = "", q: str = "", synced: str = "
             "pinned": [r for r in rows if r.pinned], "rows": [r for r in rows if not r.pinned], "kind": kind, "q": q,
             "src": src, "sort": sort, "top": top, "kinds": kinds, "src_counts": src_counts, "total": len(every), "SOURCES": articles.SOURCE_LABELS,
             "synced": synced, "last": last, "week": week, "sources": settings.article_sources,
-            "junk": articles.is_junk, "every_min": settings.article_interval_minutes})
+            "junk": articles.is_junk, "plain": articles._plain, "every_min": settings.article_interval_minutes})
 
 
 @router.post("/articles/sync")

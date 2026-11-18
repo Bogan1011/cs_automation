@@ -27,7 +27,7 @@
   {% set summ = a.summary if not junk(a.summary) else '' %}{% set sol = a.solution if not junk(a.solution) else '' %}
   <details class="kbrow{{ ' pin' if a.pinned }}">
     <summary>
-      <span class="kt"><i class="chev"></i><b>{{ a.title or a.ka }}</b>{% if new %}<span class="newtag">New</span>{% endif %}{% if a.ka in top %}<span class="toptag" title="{{ a.views }} views">★ Top viewed</span>{% endif %}</span>
+      <span class="kt"><i class="chev"></i><b>{{ plain(a.title) or a.ka }}</b>{% if new %}<span class="newtag">New</span>{% endif %}{% if a.ka in top %}<span class="toptag" title="{{ a.views }} views">★ Top viewed</span>{% endif %}</span>
       <span class="srcs">{% for k in (a.sources or '').split() %}<span class="src s-{{ k }}">{{ SOURCES.get(k, k) }}</span>{% endfor %}</span>
       <span><span class="kind k-{{ a.kind | lower | replace(' ', '-') }}">{{ a.kind }}</span></span>
       <span class="mono muted small">{{ a.ka }}</span>

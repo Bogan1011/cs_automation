@@ -487,3 +487,12 @@ def test_full_article_list_read_from_page_data():
         login(http)
         page = http.get("/articles?sort=views").text
         assert page.index("Agent issue number 40") < page.index("Agent issue number 39") and "Top viewed" in page
+
+
+def test_encoded_article_titles_are_shown_readable():
+    with SessionLocal() as s:
+        s.add(TrendArticle(ka="KA-0024909", title="AWS+PAYG+Upgrade+from+Cloud+One+to+Vision+One", sources="vision-one"))
+        s.commit()
+    with TestClient(app) as http:
+        login(http)
+        assert "AWS PAYG Upgrade from Cloud One to Vision One" in http.get("/articles").text

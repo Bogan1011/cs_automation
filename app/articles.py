@@ -134,7 +134,7 @@ def _plain(v: str) -> str:
     if _encoded(v):
         from urllib.parse import unquote_plus
         v = unquote_plus(v)
-    return v.strip()
+    return re.sub(r"\s+", " ", v.replace("\xa0", " ")).strip()
 
 
 def html_unescape(v: str) -> str:
