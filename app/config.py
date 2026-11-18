@@ -46,6 +46,8 @@ class Settings:
     article_sources_raw: str = field(default_factory=lambda: _env(
         "TREND_ARTICLE_URLS", "https://success.trendmicro.com/en-US/product/?name=trend-vision-one"))
     article_interval_minutes: int = field(default_factory=lambda: int(_env("ARTICLE_INTERVAL_MINUTES", "180")))
+    # Our own team's mail domains: their replies in a case thread count as the solution side (with Trend's).
+    team_domains_raw: str = field(default_factory=lambda: _env("TEAM_EMAIL_DOMAINS", "eventussecurity.com"))
     enable_scheduler: bool = field(default_factory=lambda: _env("ENABLE_SCHEDULER", "1") == "1")
 
     @property
@@ -59,6 +61,10 @@ class Settings:
             if sep and name.strip() and pw:
                 out[name.strip()] = pw
         return out
+
+    @property
+    def team_domains(self) -> list[str]:
+        return [d.strip().lower() for d in self.team_domains_raw.split(",") if d.strip()]
 
     @property
     def article_sources(self) -> list[str]:

@@ -195,8 +195,8 @@ Akshay
 def test_thread_without_headings_is_summarised():
     got = kb.summarize(THREAD, "RE: TM-04032776 ntrtscan not starting")
     assert got["case_no"] == "TM-04032776" and got["product"] == "apex-one"
-    assert got["issue"].startswith("Real-time scan service (ntrtscan) is not starting")
-    assert got["solution"].startswith("As discussed on the call, the issue has been resolved") and "Phone" not in got["solution"]
+    assert got["issue"].startswith("ntrtscan not starting\n\nReal-time scan service (ntrtscan) is not starting")
+    assert "As discussed on the call, the issue has been resolved" in got["solution"] and "Phone" not in got["solution"]
     assert got["root_cause"].startswith("logs attached. The cause seems to be due to the TMUMH driver")
 
 
@@ -308,7 +308,8 @@ def test_trend_case_thread_title_client_issue_solution():
     for junk in ("system generated", "do not change the email subject", "CAUTION", "Please update on the case", "Regards"):
         assert junk.lower() not in (got["issue"] + got["solution"]).lower(), junk
     assert got["issue"].startswith("Upgrade guidance (Endpoint Encryption)") and "Below is the guidance" in got["issue"]
-    assert got["solution"].startswith("In short:\n• The server must be upgraded before any agents")
+    assert got["solution"].startswith("Steps from Trend support:\n1. Server upgrade")
+    assert "The server must be upgraded before any agents" in got["solution"]
     assert "A direct upgrade from agent 1.0 to 2.0 is not supported." in got["solution"]
     assert "• Take a full backup" in got["solution"] and "<https://" not in got["solution"]
     with TestClient(app) as http:
@@ -319,4 +320,93 @@ def test_trend_case_thread_title_client_issue_solution():
             http.post("/library", data={"title": got["title"], "client": "ABC", "product": got["product"],
                                         "issue": got["issue"], "solution": got["solution"]})
         lib = http.get("/library").text
-        assert "ABC <b>2</b>" in lib
+        assert ">ABC (2)</option>" in lib
+
+
+CHAIN = """Classification: Internal
+
+Hello Team,
+
+We have reinstalled the ds agent on the server and the ds agent is properly working now.
+
+Thanks & Regards,
+Engineer One
+Security Engineer | Customer Success
+
+From: Engineer One
+Sent: Wednesday, August 5, 2026 10:33 AM
+To: Client Infosec <infosec@client.example>
+Subject: RE: TrendAI™ Technical Support Case TM-04000003 P1 : [XYZ] AMSP service not starting CRM:072900000003
+
+Hello Team,
+
+This is a follow up mail, please take the downtime for the server and we will proceed with repairing the ds agent in safe mode.
+
+Thanks & Regards,
+Engineer One
+
+From: Trend Micro TS Cases <TrendMicroTSCases@service.trendmicro.com>
+Sent: Tuesday, August 4, 2026 6:43 PM
+Subject: RE: TrendAI™ Technical Support Case TM-04000003 P1 : [XYZ] AMSP service not starting CRM:072900000003
+
+Hello Team,
+
+A pleasant day to you.
+
+I am sending this email to check and follow up on this case.
+
+Support Person
+Sr. Technical Support Engineer, AMEA
+
+From: Trend Micro TS Cases <TrendMicroTSCases@service.trendmicro.com>
+Sent: Friday, July 31, 2026 10:40 AM
+Subject: RE: TrendAI™ Technical Support Case TM-04000003 P1 : [XYZ] AMSP service not starting CRM:072900000003
+
+Hello,
+
+1.\tBoot the machine into Safe Mode.
+2.\tSet the following services to start manually:
+*\tTrend Micro Deep Security Agent
+3.\tRun the following command to reset the agent:
+\tdsa_control.exe -r
+
+Support Person
+Sr. Technical Support Engineer, AMEA
+One Example Tower, Mumbai
+
+From: Trend Micro TS Cases <TrendMicroTSCases@service.trendmicro.com>
+Sent: Thursday, July 30, 2026 10:13 AM
+Subject: RE: TrendAI™ Technical Support Case TM-04000003 P1 : [XYZ] AMSP service not starting CRM:072900000003
+
+This is Support Person from TrendAI Support Team and I will handle this case with you. As per the shared screenshot the service is not starting because of the required file is missing on the path.
+
+Support Person
+Sr. Technical Support Engineer, AMEA
+
+From: Client Infosec <infosec@client.example>
+Sent: Wednesday, July 29, 2026 5:00 PM
+Subject: RE: TrendAI™ Technical Support Case TM-04000003 P1 : [XYZ] AMSP service not starting CRM:072900000003
+
+Hello,
+
+We attempted to repair the ds agent; however, the issue persists and the AMSP service still fails to start after a reboot.
+
+Regards,
+Client
+"""
+
+
+def test_solution_comes_from_trend_and_our_team_across_the_chain():
+    subject = "RE: TrendAI™ Technical Support Case TM-04000003 P1 : [XYZ] AMSP service not starting\xa0CRM:072900000003"
+    got = kb.summarize(CHAIN, subject, "Engineer One")
+    assert got["title"] == "[XYZ] AMSP service not starting" and got["product"] == "deep-security"
+    sol = got["solution"]
+    assert sol.startswith("Outcome (Engineer One):\nWe have reinstalled the ds agent")
+    assert "Steps from Trend support (Trend Micro TS Cases · July 31, 2026):\n1. Boot the machine into Safe Mode." in sol
+    assert "• Trend Micro Deep Security Agent" in sol and "dsa_control.exe -r" in sol
+    for junk in ("Sr. Technical Support Engineer", "One Example Tower", "pleasant day", "follow up on this case",
+                 "take the downtime", "I will handle this case", "Classification"):
+        assert junk not in sol, junk
+    assert got["issue"] == ("AMSP service not starting\n\nWe attempted to repair the ds agent; however, the issue persists "
+                            "and the AMSP service still fails to start after a reboot.")
+    assert got["root_cause"].startswith("As per the shared screenshot the service is not starting because of")

@@ -44,7 +44,7 @@ def _classify(line: str) -> tuple[str, str] | None:
 def guess_product(text: str) -> str:
     t = text.lower()
     scores = {
-        "deep-security": len(re.findall(r"deep security|workload|\bdsa\b|\bdsm\b|ds_agent|c1ws|cloud one|swp", t)),
+        "deep-security": len(re.findall(r"deep security|workload|\bdsa\b|\bdsm\b|ds_agent|\bds agent|c1ws|cloud one|swp", t)),
         "apex-one": len(re.findall(r"apex one|apex central|officescan|ntrtscan|tmlisten|\bsep\b|standard endpoint|pccnt", t)),
         "xdr": len(re.findall(r"\bxdr\b|vision one|endpoint sensor|basecamp|endpoint inventory|workbench|sensor", t)),
     }
@@ -112,10 +112,15 @@ _JUNK = re.compile(
     r"system generated email|do not change the (e-?mail )?subject|"
     r"the information contained in this|intended (solely )?for the|disclaimer|confidential|"
     r"warning: computer viruses|accepts no liability|"
-    r"^\s*<?(https?://|mailto:)\S+>?\s*$|^\s*\[cid:|^\s*<image", re.I)
+    r"^\s*<?(https?://|mailto:)\S+>?\s*$|^\s*\[cid:|^\s*<image|replyfwdmessage|^\s*classification:", re.I)
 _GREETING = re.compile(r"^\s*(hi|hello|dear|good (morning|afternoon|evening))\b[^.\n]{0,60}[,!]?\s*$", re.I)
 _PLEASANTRY = re.compile(r"^\s*(thank you for (your patience|contacting|reaching|the update|sharing)|thanks for|"
-                         r"apologies for the delay|sorry for the delay|hope you are|i hope this)", re.I)
+                         r"apologies for the delay|sorry for the delay|hope you are|i hope this|a pleasant day|"
+                         r"have a (good|great|nice)|this is .{2,40} from .{0,40}(support|team).*(handle|assist|own)|"
+                         r"classification:)", re.I)
+# A sender's title line ("Sr. Technical Support Engineer, AMEA") starts their signature block.
+_TITLE_LINE = re.compile(r"^\s*[\w .,&|/-]{0,40}\b(engineer|specialist|consultant|analyst|manager|architect|"
+                         r"lead|director|executive)\b[\w .,&|/()-]{0,40}$", re.I)
 _SIGN_OFF = re.compile(r"^\s*(thanks|thank you|regards|best regards|warm regards|kind regards|thanks (and|&) regards|"
                        r"thank you and stay safe|cheers|sincerely)\b[^\n]{0,30}$", re.I)
 _ACK = re.compile(r"system generated email|we are reviewing your submission|thank you for contacting|"
@@ -124,7 +129,8 @@ _SOLVED = re.compile(r"\b(resolv|fix|solution|workaround|work-around|recommend|u
                      r"(please|kindly) (update|upgrade|install|apply|uninstall|restart|reboot|enable|disable|add|exclude|run)|"
                      r"after (applying|upgrading|updating|installing|restarting|rebooting)|"
                      r"(issue|problem) (is|was|has been) (now )?(fixed|resolved|gone|solved)|hotfix|patch|steps?)\b", re.I)
-_CAUSE = re.compile(r"\b(root cause|caused by|cause (is|was|seems)|(was|is|be) due to)\b", re.I)
+_CAUSE = re.compile(r"\b(root cause|caused by|cause (is|was|seems)|(was|is|be) due to|because of the|"
+                    r"(is|was|are|were) not (starting|working|running|connecting) because)\b", re.I)
 _ASK = re.compile(r"\b(below is|here is|regarding|guidance on|as requested|you asked|your (query|question|request))\b", re.I)
 
 
@@ -145,12 +151,15 @@ def _clean_message(msg: str) -> tuple[str, dict]:
             continue
         if not started:
             line = re.sub(r"^\s*(hi|hello|dear)\s+[\w ]{0,30}[,!]\s*", "", line, flags=re.I)
-        if not started and _PLEASANTRY.match(line):  # drop the polite sentences, keep the rest of the line
+        if _PLEASANTRY.match(line.strip()):  # drop the polite sentences, keep the rest of the line
             line = " ".join(x for x in re.split(r"(?<=[.!])\s+", line.strip()) if not _PLEASANTRY.match(x))
             if not line.strip():
                 continue
         if _SIGN_OFF.match(line) and started:
             break  # name, title, address and social links follow
+        if started and _TITLE_LINE.match(line) and out and 0 < len(out[-1].split()) <= 4 and not out[-1].endswith((".", ":")):
+            out.pop()  # the name line above the title
+            break
         started = True
         # "text: https://x <https://x>" -> "text: https://x" ; Outlook bullets "*<tab>" -> "• "
         line = re.sub(r"(https?://\S+)\s*<\1>", r"\1", line)
@@ -218,9 +227,40 @@ def key_points(body: str, n: int = 5) -> list[str]:
     return sorted(ranked, key=found.index)
 
 
-def summarize(text: str, subject: str = "") -> dict:
-    """Headings first (extract). Anything still empty comes from the thread: the answer with the most substance
-    becomes the solution, the customer's first real message (or the case topic) becomes the issue."""
+_CHASER = re.compile(r"\b(any update|update on (the|this) case|please update|kindly update|following up|follow up on this|"
+                     r"follow-up|gentle reminder|reminder|please close|close this case|can be closed|noted|ok thanks|"
+                     r"take the downtime|confirm the downtime|let (me|us) know once|check and follow up)\b", re.I)
+_OUTCOME = re.compile(r"\b(resolved|is fixed|fixed now|now working|working (fine|properly|now)|properly working|"
+                      r"working as expected|issue is (gone|solved)|has been (resolved|fixed)|successfully|reinstalled|"
+                      r"is now (running|online|connected)|started (successfully|now))\b", re.I)
+
+
+def _who(raw: str, top_sender: str = "") -> tuple[str, str]:
+    """('trend' | 'team' | 'client', display name) for one message, from its From: line."""
+    from .config import settings
+    m = re.search(r"^\s*from:\s*(.+)$", raw, re.I | re.M)
+    line = m.group(1) if m else top_sender
+    name = re.sub(r"\s*[<;].*$", "", line).strip(" '\"") if line else ""
+    low = (line or "").lower()
+    if "trendmicro" in low or "trend micro" in low:
+        return "trend", name
+    if not line:
+        return "unknown", ""
+    if any(d in low for d in settings.team_domains) or not m:  # the newest mail is from the mailbox owner (us)
+        return "team", name
+    return "client", name
+
+
+def _date(raw: str) -> str:
+    m = re.search(r"^\s*(sent|received|date)\s*:\s*(?:\w+,?\s+)?(\w+ \d{1,2},? \d{4}|\d{1,2} \w+ \d{4}|\w{3} \d{1,2} \d{4})",
+                  raw, re.I | re.M)
+    return m.group(2) if m else ""
+
+
+def summarize(text: str, subject: str = "", sender: str = "") -> dict:
+    """Whole mail chain -> case entry. Headings ("Issue:", "Resolution:") win when present. Otherwise the solution
+    comes from Trend support's replies and our own team's replies (never the client's): our team's closing
+    message gives the outcome, Trend's most detailed reply gives the steps."""
     if not subject:
         m = re.search(r"^\s*subject\s*:\s*(.+)$", text or "", re.I | re.M)
         subject = m.group(1).strip() if m else ""
@@ -234,41 +274,64 @@ def summarize(text: str, subject: str = "") -> dict:
         meta = {**m, **meta}  # newest wins
         if not body or _ACK.search(raw) and len(body) < 1500:
             continue  # Trend's automatic "case created" mail
-        if len(body) < 200 and re.search(r"\b(any update|update on (the|this) case|please update|kindly update|following up|"
-                                         r"follow up|gentle reminder|reminder|please close|can be closed|noted|ok thanks|attached)\b",
-                                         body, re.I) and not re.search(r"\b(resolved|fixed|workaround|cause|caused)\b", body, re.I):
-            continue  # "Please update on the case."
-        msgs.append(body)
-    if meta.get("product"):
+        who, name = _who(raw, sender)
+        chaser = len(body) < 400 and _CHASER.search(body) and not _OUTCOME.search(body) and not _CAUSE.search(body)
+        msgs.append({"who": who, "name": name, "date": _date(raw), "body": body, "chaser": bool(chaser)})
+    by_title = guess_product(title)
+    if by_title != "other":
+        got["product"] = by_title
+    elif meta.get("product"):
         guess = guess_product(meta["product"])
         got["product"] = guess if guess != "other" else ("endpoint-encryption" if "encryption" in meta["product"].lower() else got["product"])
     if got["product"] == "other" and re.search(r"endpoint encryption|tmee|policyserver|bitlocker", text or "", re.I):
         got["product"] = "endpoint-encryption"
-    if not msgs:
+    real = [m for m in msgs if not m["chaser"]]
+    if not real:
         return got
-    # The answer: the message that reads most like a fix (long, with steps and fix words).
-    def score(b):
-        return len(b) * (1 + len(_SOLVED.findall(b)) / 10)
-    answer = max(msgs, key=score)
+
+    def score(m):
+        return len(m["body"]) * (1 + len(_SOLVED.findall(m["body"])) / 10) * (1.5 if re.search(r"^\s*\d+[.)]\s", m["body"], re.M) else 1)
+    trend = [m for m in real if m["who"] in ("trend", "unknown")]
+    best = max(trend, key=score) if trend else None
+    outcome = next((m for m in real if m["who"] == "team" and _OUTCOME.search(m["body"])), None)
     if not got["solution"]:
-        body = answer
-        paras = _paras(body)
-        if paras and _ASK.search(paras[0]) and len(paras) > 1:
-            body = "\n\n".join(paras[1:])
-        key = key_points(body)
-        got["solution"] = _cap(("In short:\n" + "\n".join("• " + k for k in key) + "\n\nFull answer:\n" if len(key) >= 2 else "") + body, 9000)
+        parts = []
+        if outcome:
+            who = " · ".join(x for x in (outcome["name"], outcome["date"]) if x)
+            parts.append(f"Outcome{' (' + who + ')' if who else ''}:\n{_cap(outcome['body'], 700)}")
+        if best:
+            body = best["body"]
+            paras = _paras(body)
+            if paras and _ASK.search(paras[0]) and len(paras) > 1:
+                body = "\n\n".join(paras[1:])
+            key = key_points(body)
+            if len(key) >= 2 and len(body) > 1500:
+                parts.insert(0, "In short:\n" + "\n".join("• " + k for k in key))
+            label = "Steps from Trend support" if re.search(r"^\s*\d+[.)]\s", body, re.M) else "Trend support's answer"
+            who = " · ".join(x for x in (best["name"], best["date"]) if x)
+            parts.append(f"{label}{' (' + who + ')' if who else ''}:\n{body}")
+            others = [m for m in trend if m is not best]
+            if others:
+                parts.append("Also suggested by Trend:\n" + "\n".join(
+                    "• " + _cap(" ".join(_paras(m["body"])[:2]), 260) for m in reversed(others)))
+        elif not outcome:  # no Trend reply and no outcome: our team's most detailed reply
+            team = [m for m in real if m["who"] == "team"]
+            if team:
+                parts.append(max(team, key=score)["body"])
+        got["solution"] = _cap("\n\n".join(parts), 9000)
     if not got["issue"]:
-        older = msgs[msgs.index(answer) + 1:]
-        if older:
-            got["issue"] = _cap("\n\n".join(_paras(older[-1])[:3]), 900)
-        else:  # the question was raised on the portal: use the case topic and the reply's opening line
-            topic = re.sub(r"^\[[^\]]+\]\s*", "", title)
+        asked = [m for m in real if m["who"] in ("team", "client") and m is not outcome]
+        first_q = asked[-1] if asked else None
+        topic = re.sub(r"^\[[^\]]+\]\s*", "", title)
+        if first_q and (not best or real.index(first_q) > real.index(best)) and len(first_q["body"]) > 60:
+            got["issue"] = topic + "\n\n" + _cap("\n\n".join(_paras(first_q["body"])[:3]), 900)
+        else:  # the problem was described on Trend's portal: use the case topic (+ the reply's opening line)
             parts = [topic + (f" ({meta['product']})" if meta.get("product") else "")]
-            first = _paras(answer)[0] if _paras(answer) else ""
+            first = _paras(best["body"])[0] if best and _paras(best["body"]) else ""
             if _ASK.search(first):
                 parts.append(first)
             got["issue"] = "\n\n".join(p for p in parts if p)
     if not got["root_cause"]:
-        cause = next((p for b in msgs for p in _paras(b) if _CAUSE.search(p)), "")
+        cause = next((p for m in real for p in _paras(m["body"]) if _CAUSE.search(p)), "")
         got["root_cause"] = _cap(cause, 600)
     return got

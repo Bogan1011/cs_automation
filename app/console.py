@@ -260,7 +260,7 @@ async def library_read_email(request: Request, raw_email: str = Form(""), subjec
             error = str(exc)
         except Exception:  # a damaged file should never break the page
             error = "Couldn't read that file. Try saving the mail again from Outlook, or paste the text instead."
-    got = kb.summarize(raw_email, subject) if raw_email.strip() else None
+    got = kb.summarize(raw_email, subject, (upload or {}).get("sender", "")) if raw_email.strip() else None
     if got:
         c.update({k: v for k, v in got.items() if v})
     if upload and upload.get("date"):
