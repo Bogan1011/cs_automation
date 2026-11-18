@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% from "console/_m.html" import prod, stat, pri, when, icon with context %}
+{% block content %}
+<div class="bar head">
+  <div><h1>Good to see you, {{ me }}</h1><p class="muted small">What the team is working on, what's new from Trend, and the scripts and fixes you need.</p></div>
+  <div class="actions"><a class="button" href="/work#new">{{ icon('plus', 15) }} New work item</a><a class="button ghost" href="/library/new">Add finished case</a></div>
+</div>
+
+<section class="kpis4">
+  <a class="card k4 a-blue lnk" href="/work"><span class="k4l"><span class="ib blue">{{ icon('board') }}</span>Open work</span>
+    <b>{{ open_items | length }}</b><span class="k4s">{% for st, n in by_status.items() %}{{ st }} {{ n }}{{ ' · ' if not loop.last }}{% endfor %}</span></a>
+  <a class="card k4 a-violet lnk" href="/work?owner=me"><span class="k4l"><span class="ib violet">{{ icon('user') }}</span>Assigned to you</span>
+    <b>{{ mine | length }}</b><span class="k4s">{{ stale | length }} not updated for 3+ days</span></a>
+  <a class="card k4 a-pink lnk" href="/library"><span class="k4l"><span class="ib pink">{{ icon('book') }}</span>Case library</span>
+    <b>{{ n_cases }}</b><span class="k4s">finished cases with issue and solution</span></a>
+  <a class="card k4 a-amber lnk" href="/scripts"><span class="k4l"><span class="ib amber">{{ icon('code') }}</span>Scripts</span>
+    <b>{{ script_counts.values() | sum }}</b><span class="k4s">{% for k, v in SCRIPT_PRODUCTS.items() %}{{ v.split(' /')[0] }} {{ script_counts[k] }}{{ ' · ' if not loop.last }}{% endfor %}</span></a>
+</section>
+
+<section class="fgrid">
+  <article class="card fw a-blue wide">
+    <header><span class="ib blue">{{ icon('board') }}</span><div><h3>Who is on what</h3><span class="muted small">Open work, highest priority first · latest update on each</span></div><a class="more" href="/work">Board ›</a></header>
+    <ul class="wlist">
+    {% for i in open_items[:8] %}{% set u = last[i.id] %}
+      <li><a href="/work/{{ i.id }}">
+        {{ pri(i.priority) }}
+        <span class="wmain"><b>{{ i.title }}</b><span class="muted">{{ i.client or 'No client' }}{% if u and (u.note or u.change) %} · {{ u.author }}: {{ (u.note or u.change)[:110] }}{% endif %}</span></span>
+        {{ prod(i.product) }}{{ stat(i.status) }}<span class="owner">{{ i.owner or '–' }}</span><span class="muted small nowrap">{{ when(i.updated_at) }}</span></a></li>
+    {% else %}<li class="empty muted">Nothing open. Add what you're working on so the team can see it.</li>{% endfor %}
+    </ul>
+  </article>
+
+  <article class="card fw a-red">
+    <header><span class="ib red">{{ icon('alert') }}</span><div><h3>Trend alerts &amp; advisories</h3><span class="muted small">From Business Success, checked automatically</span></div></header>
+    <ul class="alist">
+    {% for a in alerts %}<li><a href="/articles?q={{ a.ka }}"><span class="kind k-{{ a.kind | lower | replace(' ', '-') }}">{{ a.kind }}</span><b>{{ a.title }}</b><span class="muted small">{{ a.ka }}{{ ' · ' ~ a.published if a.published }}</span></a></li>
+    {% else %}<li class="empty muted">No alerts picked up yet.</li>{% endfor %}
+    </ul>
+  </article>
+
+  <article class="card fw a-green">
+    <header><span class="ib green">{{ icon('news') }}</span><div><h3>Latest Trend articles</h3><span class="muted small">Vision One · newest first</span></div><a class="more" href="/articles">All ›</a></header>
+    <ul class="alist">
+    {% for a in latest %}<li><a href="/articles?q={{ a.ka }}"><b>{{ a.title or a.ka }}</b><span class="muted small">{{ a.ka }} · {{ a.kind }}{{ ' · has solution' if a.solution }}</span></a></li>
+    {% else %}<li class="empty muted">Articles appear here after the first check (every few hours, or press "Check now" on the Articles page).</li>{% endfor %}
+    </ul>
+  </article>
+
+  <article class="card fw a-pink">
+    <header><span class="ib pink">{{ icon('book') }}</span><div><h3>Recently solved</h3><span class="muted small">Issue and solution from the case library</span></div><a class="more" href="/library">Library ›</a></header>
+    <ul class="alist">
+    {% for c in recent_cases %}<li><a href="/library/{{ c.id }}"><b>{{ c.title }}</b><span class="muted small">{{ c.client or '–' }} · {{ PRODUCTS[c.product] }}{{ ' · ' ~ c.case_no if c.case_no }}</span>{% if c.solution %}<span class="sol1">{{ c.solution[:140] }}{{ '…' if c.solution | length > 140 }}</span>{% endif %}</a></li>
+    {% else %}<li class="empty muted">When a case is finished, paste the closure email in the library to keep its fix.</li>{% endfor %}
+    </ul>
+  </article>
+
+  <article class="card fw a-amber">
+    <header><span class="ib amber">{{ icon('code') }}</span><div><h3>Troubleshooting scripts</h3><span class="muted small">Read-only health checks to run on the machine</span></div></header>
+    <ul class="plist">
+    {% for k, v in SCRIPT_PRODUCTS.items() %}<li><a href="/scripts?product={{ k }}">{{ prod(k) }}<b>{{ script_counts[k] }}</b><span class="muted small">scripts ›</span></a></li>{% endfor %}
+      <li><a href="/tools"><span class="prod p-other">Trend tools</span><b>{{ n_tools }}</b><span class="muted small">links ›</span></a></li>
+    </ul>
+  </article>
+</section>
+{% endblock %}

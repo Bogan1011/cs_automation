@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "console/_m.html" import prod, icon with context %}
+{% block title %}Tools · CS Console{% endblock %}
+{% block content %}
+<div class="bar head"><div><h1>Trend Micro tools</h1><p class="muted small">Official Trend tools in one place: OneDrive copies and Trend download links.</p></div></div>
+{% for k, v in PRODUCTS.items() %}{% set group = rows | selectattr('product', 'equalto', k) | list %}{% if group %}
+<h2 class="grp"><i class="pdot p-{{ k }}"></i>{{ v }}</h2>
+<div class="sgrid">
+{% for t in group %}
+  <div class="card tool">
+    <h3><a href="{{ t.url }}" target="_blank" rel="noopener">{{ t.name }} ↗</a></h3>
+    {% if t.description %}<p class="muted small">{{ t.description }}</p>{% endif %}
+    <footer><span class="muted small">{{ 'OneDrive' if 'sharepoint.com' in t.url or '1drv.ms' in t.url or 'onedrive' in t.url else t.url.split('/')[2] }} · added by {{ t.added_by }}</span>
+      <form method="post" action="/tools/{{ t.id }}/delete" onsubmit="return confirm('Remove {{ t.name | e }}?')"><button class="ghost small-btn" type="submit">Remove</button></form></footer>
+  </div>
+{% endfor %}
+</div>{% endif %}{% else %}{% endfor %}
+{% if not rows %}<p class="muted">No tools yet. Add the OneDrive links below.</p>{% endif %}
+<details class="card fold" {{ 'open' if not rows }}>
+  <summary><span>{{ icon('plus', 15) }} Add a tool</span><span class="muted small">Paste a OneDrive share link or a Trend download page</span></summary>
+  <form method="post" action="/tools" class="form grid2">
+    <label>Name<input name="name" required maxlength="160" placeholder="e.g. Case Diagnostic Tool (CDT)"></label>
+    <label>Product<select name="product">{% for k, v in PRODUCTS.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
+    <label class="span2">Link<input name="url" type="url" required placeholder="https://…sharepoint.com/…"></label>
+    <label class="span2">What it's for<textarea name="description" rows="2" placeholder="When to use it"></textarea></label>
+    <div class="span2"><button type="submit">Add tool</button></div>
+  </form>
+</details>
+{% endblock %}

@@ -14,7 +14,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import cases, collector, outlook, reports
+from . import articles, cases, collector, console, outlook, reports
 from .config import settings
 from .db import Client, Endpoint, SessionLocal, Snapshot, SupportCase, init_db, utcnow
 
@@ -31,6 +31,7 @@ def nav_clients():
 
 
 templates.env.globals["nav_clients"] = nav_clients
+console.templates = templates
 
 
 def client_logo(name: str) -> str | None:
@@ -76,6 +77,8 @@ async def lifespan(app: FastAPI):
                           max_instances=1, coalesce=True, next_run_time=datetime.now(timezone.utc))
         scheduler.add_job(cases.run_safely, "interval", seconds=settings.poll_interval, id="cases",
                           max_instances=1, coalesce=True, next_run_time=datetime.now(timezone.utc))
+        scheduler.add_job(articles.run_safely, "interval", minutes=settings.article_interval_minutes, id="articles",
+                          max_instances=1, coalesce=True, next_run_time=datetime.now(timezone.utc) + timedelta(seconds=20))
         scheduler.start()
     yield
     if scheduler.running:
@@ -86,6 +89,7 @@ app = FastAPI(title="Centralised Vision One", lifespan=lifespan)
 app.add_middleware(SessionMiddleware, secret_key=settings.session_secret, same_site="strict",
                    max_age=12 * 3600, https_only=False)
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
+app.include_router(console.router)
 
 
 def require_login(request: Request):
@@ -107,13 +111,13 @@ def login_page(request: Request):
 
 @app.post("/login")
 def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    ok = (settings.dashboard_password
-          and hmac.compare_digest(username, settings.dashboard_user)
-          and hmac.compare_digest(password, settings.dashboard_password))
+    users = settings.users
+    match = next((u for u in users if hmac.compare_digest(username.strip().lower().encode(), u.lower().encode())), None)
+    ok = match is not None and hmac.compare_digest(password.encode(), users[match].encode())
     if not ok:
         return templates.TemplateResponse(request, "login.html", {"error": "Wrong username or password"},
                                           status_code=401)
-    request.session["user"] = username
+    request.session["user"] = match
     return RedirectResponse("/", status_code=303)
 
 
@@ -136,8 +140,14 @@ def _client_card(session, c: Client, latest: dict | None = None) -> dict:
 
 
 @app.get("/", response_class=HTMLResponse)
+def home(request: Request):
+    """Customer Success console overview."""
+    return console.overview(request)
+
+
+@app.get("/vision-one", response_class=HTMLResponse)
 def index(request: Request):
-    """Home: a short status card per client. Kept separate from the client tabs so widgets can be added later."""
+    """Client dashboard home (parked): a short status card per connected client."""
     require_login(request)
     with SessionLocal() as s:
         cards = []

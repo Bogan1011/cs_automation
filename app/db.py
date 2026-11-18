@@ -1,6 +1,6 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from sqlalchemy import (JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint,
+from sqlalchemy import (JSON, Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint,
                         create_engine)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
@@ -116,6 +116,81 @@ class Snapshot(Base):
     client_id: Mapped[int] = mapped_column(ForeignKey("clients.id", ondelete="CASCADE"), index=True)
     taken_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     summary: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+# ---- Internal Customer Success console (no client API data) ----
+
+class WorkItem(Base):
+    """An issue someone in the team is working on, so whoever picks it up knows where it stands."""
+    __tablename__ = "work_items"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client: Mapped[str] = mapped_column(String(120), default="")
+    product: Mapped[str] = mapped_column(String(30), default="other")
+    title: Mapped[str] = mapped_column(String(300))
+    status: Mapped[str] = mapped_column(String(40), default="Open")
+    priority: Mapped[str] = mapped_column(String(10), default="P3")
+    owner: Mapped[str] = mapped_column(String(80), default="")
+    trend_case: Mapped[str] = mapped_column(String(40), default="")
+    created_by: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    updates: Mapped[list["WorkUpdate"]] = relationship(back_populates="item", cascade="all, delete-orphan",
+                                                       order_by="WorkUpdate.at.desc()")
+
+
+class WorkUpdate(Base):
+    __tablename__ = "work_updates"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("work_items.id", ondelete="CASCADE"), index=True)
+    author: Mapped[str] = mapped_column(String(80), default="")
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    note: Mapped[str] = mapped_column(Text, default="")
+    change: Mapped[str] = mapped_column(String(200), default="")  # e.g. "Status: Open -> Waiting on Trend"
+    item: Mapped[WorkItem] = relationship(back_populates="updates")
+
+
+class KnowledgeCase(Base):
+    """A finished case kept for the future: the issue and how it was solved."""
+    __tablename__ = "knowledge_cases"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    case_no: Mapped[str] = mapped_column(String(40), default="")
+    client: Mapped[str] = mapped_column(String(120), default="")
+    product: Mapped[str] = mapped_column(String(30), default="other")
+    title: Mapped[str] = mapped_column(String(300))
+    issue: Mapped[str] = mapped_column(Text, default="")
+    solution: Mapped[str] = mapped_column(Text, default="")
+    root_cause: Mapped[str] = mapped_column(Text, default="")
+    raw_email: Mapped[str] = mapped_column(Text, default="")
+    closed_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    added_by: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class ToolLink(Base):
+    """Trend Micro's official tools (OneDrive or Trend download links), in one place."""
+    __tablename__ = "tool_links"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(160))
+    url: Mapped[str] = mapped_column(String(1000))
+    product: Mapped[str] = mapped_column(String(30), default="other")
+    description: Mapped[str] = mapped_column(Text, default="")
+    added_by: Mapped[str] = mapped_column(String(80), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class TrendArticle(Base):
+    """A Trend Business Success knowledge article (KA-xxxxxxx), found automatically."""
+    __tablename__ = "trend_articles"
+    ka: Mapped[str] = mapped_column(String(20), primary_key=True)
+    title: Mapped[str] = mapped_column(String(400), default="")
+    url: Mapped[str] = mapped_column(String(500), default="")
+    kind: Mapped[str] = mapped_column(String(40), default="Article")
+    product: Mapped[str] = mapped_column(String(30), default="xdr")
+    summary: Mapped[str] = mapped_column(Text, default="")
+    solution: Mapped[str] = mapped_column(Text, default="")
+    published: Mapped[str] = mapped_column(String(40), default="")
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 def _engine():

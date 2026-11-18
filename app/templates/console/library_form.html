@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit case' if edit_id else 'Add finished case' }} · Case library{% endblock %}
+{% block content %}
+<div class="bar head"><div><a href="{{ '/library/' ~ edit_id if edit_id else '/library' }}" class="back">‹ Case library</a><h1>{{ 'Edit case' if edit_id else 'Add a finished case' }}</h1>
+  <p class="muted small">Paste the closure email and press <b>Read the email</b>. The issue, root cause and solution are filled in for you to check before saving.</p></div></div>
+
+{% if not edit_id %}
+<form method="post" action="/library/read-email" class="card form paste">
+  <label>Closure email <span class="muted">(subject and body, copied from Outlook)</span>
+    <textarea name="raw_email" rows="8" placeholder="Subject: RE: TM-0xxxxxxx …&#10;&#10;Issue: …&#10;Root cause: …&#10;Resolution: …">{{ c.raw_email }}</textarea></label>
+  <input type="hidden" name="client" value="{{ c.client }}">
+  <div><button type="submit" class="ghost">Read the email</button>
+  {% if read is defined %}<span class="muted small">{% if read.issue or read.solution %}Filled in from the email: {{ ['case no.' if read.case_no, 'issue' if read.issue, 'root cause' if read.root_cause, 'solution' if read.solution] | select | join(', ') }}. Check them below.{% else %}No "Issue" or "Solution" headings found, so please fill those in yourself.{% endif %}</span>{% endif %}</div>
+</form>
+{% endif %}
+
+<form method="post" action="/library" class="card form grid2 kbform">
+  <input type="hidden" name="edit_id" value="{{ edit_id or 0 }}"><input type="hidden" name="from_work" value="{{ from_work or 0 }}">
+  <textarea name="raw_email" hidden>{{ c.raw_email }}</textarea>
+  <label class="span2">Title<input name="title" required maxlength="300" value="{{ c.title }}" placeholder="Short name of the problem"></label>
+  <label>Client<input name="client" list="clients" value="{{ c.client }}"></label>
+  <label>Product<select name="product">{% for k, v in PRODUCTS.items() %}<option value="{{ k }}" {{ 'selected' if k == c.product }}>{{ v }}</option>{% endfor %}</select></label>
+  <label>Trend case no.<input name="case_no" value="{{ c.case_no }}" placeholder="TM-0xxxxxxx"></label>
+  <label>Closed on<input type="date" name="closed_on" value="{{ c.closed_on }}"></label>
+  <label class="span2 hl issue"><em>Issue</em><textarea name="issue" rows="5" placeholder="What the client saw: symptoms, error messages, affected machines">{{ c.issue }}</textarea></label>
+  <label class="span2">Root cause <span class="muted">(optional)</span><textarea name="root_cause" rows="3">{{ c.root_cause }}</textarea></label>
+  <label class="span2 hl solution"><em>Solution</em><textarea name="solution" rows="6" placeholder="Exactly what fixed it, step by step">{{ c.solution }}</textarea></label>
+  <div class="span2"><button type="submit">Save to the library</button></div>
+</form>
+<datalist id="clients">{% for x in clients %}<option value="{{ x }}">{% endfor %}</datalist>
+{% endblock %}

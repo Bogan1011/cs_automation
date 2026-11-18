@@ -97,6 +97,20 @@ It only reads them. With the no-admin sign-in it reads your own mailbox. With ap
 Cases are matched to a client by the tag in the subject, like `[ABC]`. You can change the tag at the bottom of the client's Support cases page.
 To read new emails right away, run `docker compose exec app python -m app.cli sync-cases`.
 
+## Customer Success console
+
+The home page is the team's internal console. It uses no client API data.
+
+- **Work board** (`/work`): who is working on which client issue, its status (Open, In progress, Waiting on client, Waiting on Trend, Resolved), priority, Trend case number and a history of every update.
+- **Case library** (`/library`): finished cases with the issue, root cause and solution highlighted. Paste the closure email and press *Read the email* to fill the fields, then check and save. When a work item is resolved, *Save to case library* copies it across.
+- **Scripts** (`/scripts`): read-only health checks in `troubleshooting/<deep-security|xdr|apex-one>/`. Add a `.ps1` (with a `.SYNOPSIS` block) or `.sh` (with comment lines at the top) there and rebuild to show it.
+- **Trend articles** (`/articles`): the latest Vision One articles from Trend Business Success, read every `ARTICLE_INTERVAL_MINUTES` (default 180) from `TREND_ARTICLE_URLS`. Each new article page is read once for its summary and solution.
+- **Tools** (`/tools`): links to Trend's official tools, for example OneDrive share links.
+
+Give each teammate their own sign-in so updates show who made them: `DASHBOARD_USERS=akshay:password1,colleague:password2` in `.env`, then `docker compose up -d`.
+
+The parked client dashboard is at `/vision-one` and its tab appears only when a client is added.
+
 ## Removing a client and its API keys
 
 Client API keys (Vision One, Server & Workload, Apex) are stored only in the Postgres database, encrypted with `MASTER_KEY`. They are never in the repository or in `.env`.

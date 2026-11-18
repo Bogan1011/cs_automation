@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "console/_m.html" import prod, icon with context %}
+{% block title %}Case library · CS Console{% endblock %}
+{% block content %}
+<div class="bar head">
+  <div><h1>Case library</h1><p class="muted small">Finished cases with the issue and the fix, so the next time it happens we already know the answer.</p></div>
+  <div class="actions"><a class="button" href="/library/new">{{ icon('plus', 15) }} Add finished case</a></div>
+</div>
+<form class="search wide" method="get"><input name="q" value="{{ q }}" placeholder="Search issue, solution, error text, case no. or client…" autofocus>
+  <select name="product" onchange="this.form.submit()"><option value="">All products</option>{% for k, v in PRODUCTS.items() %}<option value="{{ k }}" {{ 'selected' if k == product }}>{{ v }} ({{ counts.get(k, 0) }})</option>{% endfor %}</select>
+  <select name="client" onchange="this.form.submit()"><option value="">All clients</option>{% for c in clients %}<option {{ 'selected' if c == client }}>{{ c }}</option>{% endfor %}</select>
+</form>
+<div class="kbgrid">
+{% for c in rows %}
+  <a class="card kb" href="/library/{{ c.id }}">
+    <header>{{ prod(c.product) }}<span class="muted small">{{ c.client or '–' }}{{ ' · ' ~ c.case_no if c.case_no }}{{ ' · ' ~ c.closed_on.strftime('%d %b %Y') if c.closed_on }}</span></header>
+    <h3>{{ c.title }}</h3>
+    <div class="hl issue"><em>Issue</em><p>{{ (c.issue or '–')[:220] }}{{ '…' if c.issue | length > 220 }}</p></div>
+    <div class="hl solution"><em>Solution</em><p>{{ (c.solution or 'Not written yet')[:260] }}{{ '…' if c.solution | length > 260 }}</p></div>
+  </a>
+{% else %}
+  <p class="muted">{{ 'Nothing matches that search.' if q or product or client else 'No cases yet. When a case is finished, add it here by pasting the closure email.' }}</p>
+{% endfor %}
+</div>
+{% endblock %}

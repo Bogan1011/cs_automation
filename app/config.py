@@ -40,7 +40,29 @@ class Settings:
     # Trend support cases are read from this mailbox (defaults to GRAPH_MAILBOX). Needs Graph Mail.Read.
     cases_mailbox: str = field(default_factory=lambda: _env("CASES_MAILBOX"))
     cases_backfill_days: int = field(default_factory=lambda: int(_env("CASES_BACKFILL_DAYS", "120")))
+    # More sign-ins for the team: "akshay:password1,colleague:password2". DASHBOARD_USER keeps working too.
+    dashboard_users_raw: str = field(default_factory=lambda: _env("DASHBOARD_USERS"))
+    # Public Trend Business Success pages to read for the latest articles (comma-separated).
+    article_sources_raw: str = field(default_factory=lambda: _env(
+        "TREND_ARTICLE_URLS", "https://success.trendmicro.com/en-US/product/?name=trend-vision-one"))
+    article_interval_minutes: int = field(default_factory=lambda: int(_env("ARTICLE_INTERVAL_MINUTES", "180")))
     enable_scheduler: bool = field(default_factory=lambda: _env("ENABLE_SCHEDULER", "1") == "1")
+
+    @property
+    def users(self) -> dict[str, str]:
+        """username -> password for everyone who can sign in."""
+        out = {}
+        if self.dashboard_user and self.dashboard_password:
+            out[self.dashboard_user] = self.dashboard_password
+        for pair in self.dashboard_users_raw.split(","):
+            name, sep, pw = pair.strip().partition(":")
+            if sep and name.strip() and pw:
+                out[name.strip()] = pw
+        return out
+
+    @property
+    def article_sources(self) -> list[str]:
+        return [u.strip() for u in self.article_sources_raw.split(",") if u.strip()]
 
     @property
     def graph_configured(self) -> bool:

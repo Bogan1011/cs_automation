@@ -4,7 +4,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#070b16">
 <link rel="icon" href="/static/brand/favicon.ico">
-<title>{% block title %}Centralised Vision One{% endblock %}</title>
+<title>{% block title %}CS Console{% endblock %}</title>
 <script>try{const t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 <link rel="stylesheet" href="/static/style.css?v={{ asset_v }}">
 </head>
@@ -15,7 +15,7 @@
 <header class="top">
   <a class="brand" href="/" title="Home">
     <span class="brand-logo">{% include "_logo.html" %}</span>
-    <span class="brand-text"><b>Vision One Command Centre</b><small>Eventus Security · Customer Success</small></span>
+    <span class="brand-text"><b>CS Command Centre</b><small>Eventus Security · Customer Success</small></span>
   </a>
   <div class="right">
     <button class="theme-pill" id="theme" type="button" title="Switch theme (dark, light, navy)" aria-label="Switch theme">
@@ -26,8 +26,8 @@
     <div class="clock" aria-label="Local time"><b id="clock-time">--:--:--</b><span id="clock-date"></span></div>
     {% if request.session.get('user') %}
     {% set nc = nav_clients() %}{% set failed = nc | selectattr('ok', 'equalto', False) | list %}
-    <span class="status-pill {{ 'crit' if failed else '' }}" title="{{ failed | map(attribute='name') | join(', ') ~ ' last poll failed' if failed else 'Every client polled successfully' }}">
-      <i></i>{{ (failed | length) ~ ' poll failed' if failed else 'All clients live' }}</span>
+    {% if failed %}<span class="status-pill crit" title="{{ failed | map(attribute='name') | join(', ') }} last poll failed"><i></i>{{ failed | length }} poll failed</span>{% endif %}
+    <span class="user-pill" title="Signed in"><span class="av">{{ request.session.get('user')[:1] | upper }}</span>{{ request.session.get('user') }}</span>
     <form method="post" action="/logout"><button class="ghost icon-btn" title="Log out" aria-label="Log out"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H4"/></svg></button></form>
     {% endif %}
   </div>
@@ -37,12 +37,19 @@
 <div class="segwrap">
 <nav class="tabs seg" id="tabs" aria-label="Pages">
   <span class="seg-ind" aria-hidden="true"></span>
-  <a href="/" class="{{ 'on' if path == '/' }}"{% if path == '/' %} aria-current="page"{% endif %}>
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg>Home</a>
-  {% for t in nav_clients() %}
-  {% set here = path == '/clients/' ~ t.id or (client is defined and client and client.id == t.id) %}
-  <a href="/clients/{{ t.id }}" class="{{ 'on' if here }}"{% if here %} aria-current="page"{% endif %}><i class="{{ 'fail' if t.ok == False }}"></i>{{ t.name }}</a>
+  {% set NAV = [
+    ('/', 'Home', '<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/>'),
+    ('/work', 'Work board', '<rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="11" rx="1.5"/><rect x="17" y="4" width="4" height="7" rx="1.5"/>'),
+    ('/library', 'Case library', '<path d="M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 7h6M9 11h6"/>'),
+    ('/scripts', 'Scripts', '<path d="m8 9-4 3 4 3M16 9l4 3-4 3M13.5 5l-3 14"/>'),
+    ('/articles', 'Trend articles', '<path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/>'),
+    ('/tools', 'Tools', '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8V21h3.2l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/>'),
+  ] %}
+  {% for href, label, icon in NAV %}{% set here = path == href or (href != '/' and path.startswith(href)) %}
+  <a href="{{ href }}" class="{{ 'on' if here }}"{% if here %} aria-current="page"{% endif %}>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">{{ icon | safe }}</svg>{{ label }}</a>
   {% endfor %}
+  {% if nc %}<a href="/vision-one" class="{{ 'on' if path == '/vision-one' or path.startswith('/clients') or path.startswith('/endpoints') }}">Vision One</a>{% endif %}
 </nav>
 </div>
 {% endif %}

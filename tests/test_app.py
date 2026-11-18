@@ -49,7 +49,7 @@ def fresh_db():
 
 def make_client(name="Acme Corp", region="in"):
     with SessionLocal() as s:
-        c = Client(name=name, region=region, api_key_enc=crypto.encrypt("secret-key"), report_to="soc@example.com")
+        c = Client(name=name, region=region, api_key_enc=crypto.encrypt("secret-key"), report_to="cs@example.com")
         s.add(c)
         s.commit()
         return c.id
@@ -282,7 +282,7 @@ def test_home_page_and_inventory_counts():
     collect(a)
     with TestClient(app) as http:
         http.post("/login", data={"username": "admin", "password": "pw"})
-        home = http.get("/")
+        home = http.get("/vision-one")
         assert home.status_code == 200 and "<h3>SEP compliance</h3>" in home.text and "Needs attention" in home.text and f'href="/clients/{a}"' in home.text
         assert ">Home</a>" in http.get(f"/clients/{a}").text  # header nav on client pages
     with SessionLocal() as s:
@@ -318,7 +318,7 @@ def test_sync_all_button_and_cli_poll_one_client(capsys, monkeypatch):
     with TestClient(app) as http:
         assert http.post("/api/sync").status_code == 401
         http.post("/login", data={"username": "admin", "password": "pw"})
-        assert "Sync all now" in http.get("/").text
+        assert "Sync all now" in http.get("/vision-one").text
         r = http.post("/api/sync").json()
         assert r["ok"] and r["results"][0]["result"].startswith("ok")
     with SessionLocal() as s:

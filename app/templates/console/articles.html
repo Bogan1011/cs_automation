@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Trend articles · CS Console{% endblock %}
+{% block content %}
+<div class="bar head">
+  <div><h1>Trend Vision One articles</h1><p class="muted small">Picked up automatically from Trend Business Success every few hours.{% if last %} Newest found <span class="seen" data-t="{{ last.isoformat() }}{{ '' if last.tzinfo else 'Z' }}"></span>.{% endif %}</p></div>
+  <div class="actions"><form method="post" action="/articles/sync"><button class="ghost" type="submit">↻ Check now</button></form>
+    <a class="button ghost" href="{{ sources[0] if sources else 'https://success.trendmicro.com' }}" target="_blank" rel="noopener">Business Success ↗</a></div>
+</div>
+{% if synced %}<p class="okmsg">{{ synced }}</p>{% endif %}
+<form class="search wide" method="get"><input name="q" value="{{ q }}" placeholder="Search articles, error text or KA number…">{% if kind %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}</form>
+<nav class="stabs">
+  <a href="/articles" class="{{ 'on' if not kind }}">All <b>{{ kinds.values() | sum }}</b></a>
+  {% for k, n in kinds | dictsort %}<a href="?kind={{ k }}" class="{{ 'on' if kind == k }}"><i class="kd k-{{ k | lower | replace(' ', '-') }}"></i>{{ k }} <b>{{ n }}</b></a>{% endfor %}
+</nav>
+<div class="arts">
+{% for a in rows %}{% set new = a.first_seen and (a.first_seen if a.first_seen.tzinfo else a.first_seen.replace(tzinfo=week.tzinfo)) > week %}
+  <article class="card art">
+    <header><span class="kind k-{{ a.kind | lower | replace(' ', '-') }}">{{ a.kind }}</span>{% if new %}<span class="newtag">New</span>{% endif %}<span class="mono muted small">{{ a.ka }}{{ ' · ' ~ a.published if a.published }}</span></header>
+    <h3><a href="{{ a.url }}" target="_blank" rel="noopener">{{ a.title or a.ka }} ↗</a></h3>
+    {% if a.summary %}<div class="hl issue"><em>Issue</em><p>{{ a.summary }}</p></div>{% endif %}
+    {% if a.solution %}<div class="hl solution"><em>Solution</em><p class="pre">{{ a.solution }}</p></div>{% elif a.fetched_at %}<p class="muted small">No separate solution section. Open the article for details.</p>{% endif %}
+  </article>
+{% else %}
+  <p class="muted">No articles yet. Press <b>Check now</b>. If nothing appears, the server may not be able to reach success.trendmicro.com.</p>
+{% endfor %}
+</div>
+{% endblock %}
