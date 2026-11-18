@@ -64,7 +64,7 @@ def clean_subject(subject: str) -> str:
 
 def client_tags(c: Client) -> list[str]:
     tags = [t.strip().lower() for t in (c.case_tags or "").split(",") if t.strip()]
-    if not tags:  # default: "IFL - India First Life" -> "ifl"; "Bandhan Life" -> "bandhan life"
+    if not tags:  # default: "ABC - Alpha Beta Corp" -> "abc"; "Acme Corp" -> "acme corp"
         tags = [c.name.split(" - ")[0].strip().lower()]
     return tags
 

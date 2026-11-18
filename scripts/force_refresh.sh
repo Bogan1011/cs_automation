@@ -2,7 +2,7 @@
 # Force the 5-minute sync to run right now, instead of waiting for the next cycle.
 #
 #   ./scripts/force_refresh.sh                    # all clients
-#   ./scripts/force_refresh.sh "Bandhan Life"     # one client (name as in list-clients)
+#   ./scripts/force_refresh.sh "Acme Corp"     # one client (name as in list-clients)
 #   ./scripts/force_refresh.sh --all-details      # also fetch every exact pattern version now
 #
 # Runs inside the running app container, so it uses the same database and keys.

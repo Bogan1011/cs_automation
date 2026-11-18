@@ -24,7 +24,7 @@ class Client(Base):
     report_to: Mapped[str] = mapped_column(String(500), default="")
     # Agent installer share links: {"c1ws:windows": url, "c1ws_xdr:linux": url, ...}
     installers: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    # Subject tags that mark this client's Trend support cases, e.g. "IFL" for "[IFL] ..." (comma-separated)
+    # Subject tags that mark this client's Trend support cases, e.g. "ABC" for "[ABC] ..." (comma-separated)
     case_tags: Mapped[str] = mapped_column(String(200), default="")
     # Optional product-console APIs for exact pattern versions
     swp_url: Mapped[str] = mapped_column(String(300), default="")

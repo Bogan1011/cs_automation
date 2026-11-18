@@ -283,7 +283,7 @@ VIRUS_PATTERN_ID = "1073741840"        # Virus Pattern (conventional scan)
 def virus_verdict(epp: dict) -> str | None:
     """The SEP console's 'compliant / outdated virus patterns', from Trend's own per-feature compliance:
     outdated when a feature lists the agent's virus pattern in outdatedPatternIds.
-    Matched to the Bandhan console on 2026-11-16 (174 outdated, exactly)."""
+    Matched to a live console on 2026-11-16 (174 outdated, exactly)."""
     feats = epp.get("features") or []
     if not feats:
         return None
@@ -734,7 +734,7 @@ def _sensor_platform(raw: dict) -> bool:
 def inventory_flags(e) -> list[str]:
     """Console action groups this endpoint belongs to (e is an Endpoint row or a normalized dict).
 
-    Matched against the Bandhan console on 2026-11-16:
+    Matched against a live console on 2026-11-16:
       * Deployment failed = the endpoint detail carries recommendedActions (install not initiated, too few
         CPU cores, network error...). Not agentVersionStatus=updateFailed: that endpoint is not in the group.
       * Sensor update recommended = a Server & Workload agent on Windows or Linux with no sensor record\n        that was seen in the last 7 days and runs agent 20 or later. Matched 4 = 4 on 2026-11-17: the console\n        leaves out AIX/Solaris, agents not seen for 7+ days, and old 10.x agents (e.g. on Windows 2003).

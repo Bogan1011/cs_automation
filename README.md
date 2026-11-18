@@ -11,7 +11,7 @@ Case management stays in the separate Trend portal and is out of scope here.
 
 ## 1. Create a Vision One API key per client
 
-Repeat this in each client's Vision One console (for example `portal.in.xdr.trendmicro.com` for Bandhan Life and IFL, and `portal.sg.xdr.trendmicro.com` for Clix Capital):
+Repeat this in each client's Vision One console (for example `portal.in.xdr.trendmicro.com` for clients in India, and `portal.sg.xdr.trendmicro.com` for Singapore):
 
 1. **Administration → User Roles**: create a role named `Dashboard Read-Only` that has only *view* permission for **Endpoint Inventory / Endpoint Security**. Nothing else is needed.
 2. **Administration → API Keys → Add API key**: assign the role, set an expiry date, and copy the key.
@@ -39,10 +39,10 @@ Back up `MASTER_KEY`. Without it, the stored API keys can't be decrypted, and yo
 Add the clients. Each command asks for the API key with hidden input:
 
 ```bash
-docker compose exec app python -m app.cli add-client --name "Bandhan Life" --region in --report-to "client-contact@example.com"
-docker compose exec app python -m app.cli add-client --name "IFL - India First Life" --region in
-docker compose exec app python -m app.cli add-client --name "Clix Capital" --region sg
-docker compose exec app python -m app.cli test --name "Bandhan Life"     # checks the key
+docker compose exec app python -m app.cli add-client --name "Acme Corp" --region in --report-to "client-contact@example.com"
+docker compose exec app python -m app.cli add-client --name "ABC - Alpha Beta Corp" --region in
+docker compose exec app python -m app.cli add-client --name "Globex Ltd" --region sg
+docker compose exec app python -m app.cli test --name "Acme Corp"     # checks the key
 docker compose exec app python -m app.cli poll                           # first pull right away
 ```
 
@@ -50,7 +50,7 @@ docker compose exec app python -m app.cli poll                           # first
 
 ```bash
 ./scripts/force_refresh.sh                  # all clients
-./scripts/force_refresh.sh "Bandhan Life"   # one client
+./scripts/force_refresh.sh "Acme Corp"   # one client
 ./scripts/force_refresh.sh --all-details    # also fetch every exact pattern version now
 ```
 
@@ -66,12 +66,12 @@ The Vision One API gives Trend's per-endpoint verdict (latest or outdated) but n
 
 ```bash
 # Server & Workload Protection: create a read-only API key in the SWP console (Administration > User Management > API Keys)
-docker compose exec app python -m app.cli set-swp --name "Bandhan Life" --url https://workload.<region>.cloudone.trendmicro.com
-docker compose exec app python -m app.cli swp-inspect --name "Bandhan Life"     # check the fields it returns
+docker compose exec app python -m app.cli set-swp --name "Acme Corp" --url https://workload.<region>.cloudone.trendmicro.com
+docker compose exec app python -m app.cli swp-inspect --name "Acme Corp"     # check the fields it returns
 
 # Standard Endpoint Protection (Apex One as a Service): add an application under Automation API Access Settings
-docker compose exec app python -m app.cli set-apex --name "Bandhan Life" --url https://<tenant>.manage.trendmicro.com --app-id <Application ID>
-docker compose exec app python -m app.cli apex-probe --name "Bandhan Life"
+docker compose exec app python -m app.cli set-apex --name "Acme Corp" --url https://<tenant>.manage.trendmicro.com --app-id <Application ID>
+docker compose exec app python -m app.cli apex-probe --name "Acme Corp"
 ```
 
 Once these are connected, the next poll matches computers to endpoints by host name and fills in the Patterns table with exact versions. The latest version of each pattern is the newest one found across all clients.
@@ -94,8 +94,25 @@ Report drafts are only created (`POST …/messages`). The dashboard never sends 
 
 The same app reads Trend support case emails (subjects with `TM-12345678`) every 5 minutes with `GET /users/{mailbox}/messages`.
 It only reads them. With the no-admin sign-in it reads your own mailbox. With app-only, it reads `CASES_MAILBOX`, or `GRAPH_MAILBOX` if that isn't set.
-Cases are matched to a client by the tag in the subject, like `[IFL]`. You can change the tag at the bottom of the client's Support cases page.
+Cases are matched to a client by the tag in the subject, like `[ABC]`. You can change the tag at the bottom of the client's Support cases page.
 To read new emails right away, run `docker compose exec app python -m app.cli sync-cases`.
+
+## Removing a client and its API keys
+
+Client API keys (Vision One, Server & Workload, Apex) are stored only in the Postgres database, encrypted with `MASTER_KEY`. They are never in the repository or in `.env`.
+
+```bash
+docker compose exec app python -m app.cli list-clients
+docker compose exec -it app python -m app.cli remove-client --name "Client name"   # one client
+docker compose exec -it app python -m app.cli remove-client --all                  # every client
+docker compose exec app python -m app.cli forget-graph   # Microsoft 365 sign-in and case sync state
+```
+
+`remove-client` deletes the client row with its encrypted keys, endpoints, endpoint details, snapshots and support cases. To wipe everything instead, run `docker compose down -v`, which deletes the database volume. Then revoke the keys in each Trend console too, because deleting a local copy does not disable a key.
+
+## Milestones
+
+`milestone/v1-client-dashboard` (branch) holds the multi-client dashboard as it was on 2026-11-18, before client data was removed. Restore it with `git checkout milestone/v1-client-dashboard`.
 
 ## Branding
 

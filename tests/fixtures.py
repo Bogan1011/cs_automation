@@ -26,14 +26,14 @@ def endpoint(guid, name, manager, status="on", days_ago=0, update="upToDate", ed
 
 
 ENDPOINTS = [
-    endpoint("g1", "BL-LAP-001", "Standard Endpoint Protection"),
-    endpoint("g2", "BL-LAP-002", "Standard Endpoint Protection", status="off", days_ago=10, update="outdated",
+    endpoint("g1", "AC-LAP-001", "Standard Endpoint Protection"),
+    endpoint("g2", "AC-LAP-002", "Standard Endpoint Protection", status="off", days_ago=10, update="outdated",
              version="14.0.12900.1"),
-    endpoint("g3", "BL-SRV-DB01", "Server & Workload Protection", os_name="Linux"),
-    endpoint("g4", "BL-SRV-WEB01", "Server & Workload Protection"),
-    endpoint("g5", "BL-KIOSK", ""),
-    endpoint("g6", "BL-LAP-APEX", "APEX ONE", virus="19.121.00"),
-    endpoint("g7", "BL-SRV-AND", "Server and Workload Protection Manager - 752139992548"),
+    endpoint("g3", "AC-SRV-DB01", "Server & Workload Protection", os_name="Linux"),
+    endpoint("g4", "AC-SRV-WEB01", "Server & Workload Protection"),
+    endpoint("g5", "AC-KIOSK", ""),
+    endpoint("g6", "AC-LAP-APEX", "APEX ONE", virus="19.121.00"),
+    endpoint("g7", "AC-SRV-AND", "Server and Workload Protection Manager - 752139992548"),
     # unmanaged (discovered, no agent/sensor) — must not be counted
     {"agentGuid": "u1", "endpointName": "UNMANAGED-PC", "eppAgent": {}, "edrSensor": {}},
     {"agentGuid": "u2", "endpointName": "UNMANAGED-PC2"},

@@ -10,7 +10,8 @@ from sqlalchemy import select
 
 from . import crypto
 from .config import REGIONS
-from .db import Client, SessionLocal, init_db
+from .db import (Client, Endpoint, EndpointDetail, SessionLocal, Snapshot, SupportCase, SyncState,
+                 init_db)
 from .visionone import VisionOneClient
 
 
@@ -118,6 +119,14 @@ def inspect_fields(items: list[dict]) -> str:
     return "\n".join(out)
 
 
+def remove_client(s, c) -> None:
+    """Delete one client with its encrypted API keys, endpoints, details, snapshots and support cases.
+    Rows are deleted explicitly so this also works where the database does not enforce ON DELETE CASCADE."""
+    for model in (EndpointDetail, Endpoint, Snapshot, SupportCase):
+        s.query(model).filter(model.client_id == c.id).delete(synchronize_session=False)
+    s.delete(c)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="python -m app.cli")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -134,6 +143,12 @@ def main(argv=None):
     e.add_argument("--report-to")
     e.add_argument("--enabled", choices=["yes", "no"])
     sub.add_parser("list-clients")
+    rm = sub.add_parser("remove-client", help="delete a client, its API keys and all its stored data")
+    g = rm.add_mutually_exclusive_group(required=True)
+    g.add_argument("--name")
+    g.add_argument("--all", action="store_true", help="every client")
+    rm.add_argument("--yes", action="store_true", help="skip the confirmation question")
+    sub.add_parser("forget-graph", help="delete the stored Microsoft 365 sign-in and case email sync state")
     t = sub.add_parser("test", help="check a client's key and print endpoint count")
     t.add_argument("--name", required=True)
     d = sub.add_parser("dump", help="print the first raw endpoint record (to check field mapping)")
@@ -198,6 +213,22 @@ def main(argv=None):
                 c.enabled = args.enabled == "yes"
             s.commit()
             print("Updated")
+        elif args.cmd == "remove-client":
+            targets = list(s.scalars(select(Client))) if args.all else [get(args.name)]
+            if not targets:
+                print("No clients to remove")
+                return
+            names = ", ".join(c.name for c in targets)
+            if not args.yes and input(f"Delete {names} and all their keys and data? Type yes: ").strip() != "yes":
+                sys.exit("Cancelled")
+            for c in targets:
+                remove_client(s, c)
+            s.commit()
+            print(f"Removed {names}")
+        elif args.cmd == "forget-graph":
+            n = s.query(SyncState).delete()
+            s.commit()
+            print(f"Removed {n} stored sync/sign-in entries")
         elif args.cmd == "list-clients":
             for c in s.scalars(select(Client).order_by(Client.name)):
                 state = "ok" if c.last_poll_ok else ("error: " + (c.last_error or "")[:80] if c.last_poll_ok is False else "never polled")

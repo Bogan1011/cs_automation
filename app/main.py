@@ -34,7 +34,7 @@ templates.env.globals["nav_clients"] = nav_clients
 
 
 def client_logo(name: str) -> str | None:
-    """/static/clients/<slug>.png|svg|webp if a logo was added for this client (slug: 'IFL - India First Life' -> 'ifl-india-first-life')."""
+    """/static/clients/<slug>.png|svg|webp if a logo was added for this client (slug: 'ABC - Alpha Beta Corp' -> 'abc-alpha-beta-corp')."""
     slug = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
     for ext in ("svg", "png", "webp", "jpg"):
         if (BASE / "static" / "clients" / f"{slug}.{ext}").exists():
