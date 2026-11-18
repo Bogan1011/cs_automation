@@ -1145,3 +1145,18 @@ html{scroll-behavior:auto}
 .gtable th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 @media (max-width:900px){.guide-wrap{grid-template-columns:1fr}.guide-side{position:static;order:2}.guide{padding:4px 18px 18px}.grow{grid-template-columns:1fr 18px}.gm{display:none}}
 @media print{.side,.guide-side,.top-note,.actions,.codeblock .copy{display:none!important}.shell.has-side{display:block}.guide{border:0;box-shadow:none}}
+
+/* Compact article rows */
+.arows .kbhead,.arows .kbrow>summary{grid-template-columns:minmax(0,1fr) 130px 120px 130px 28px}
+.arows .kt b{font-weight:600}
+.arows .kt .newtag{margin-left:8px;flex:none}
+.arows .clamp{max-height:7.6em;overflow:hidden;-webkit-mask-image:linear-gradient(180deg,#000 75%,transparent)}
+.arows .kind{font-size:11.5px}
+@media (max-width:900px){.arows .kbrow>summary{grid-template-columns:1fr auto}.arows .kbrow>summary>span:nth-child(n+3):not(:last-child){display:none}}
+
+/* Compact script rows */
+.srows .kbhead,.srows .kbrow>summary{grid-template-columns:minmax(0,1fr) 150px 110px 250px}
+.srows code.run{display:block;margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+@media (max-width:900px){.srows .kbhead{display:none}.srows .kbrow>summary{grid-template-columns:1fr auto}.srows .kbrow>summary>span:nth-child(2),.srows .kbrow>summary>span:nth-child(3){display:none}}
+.arows .kt b{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.35}
+.srows .os-chip{justify-self:start}

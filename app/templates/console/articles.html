@@ -1,27 +1,42 @@
 {% extends "base.html" %}
+{% from "console/_m.html" import prod with context %}
 {% block title %}Trend articles · CS Console{% endblock %}
 {% block content %}
 <div class="bar head">
-  <div><h1>Trend Vision One articles</h1><p class="muted small">Picked up automatically from Trend Business Success every few hours.{% if last %} Newest found <span class="seen" data-t="{{ last.isoformat() }}{{ '' if last.tzinfo else 'Z' }}"></span>.{% endif %}</p></div>
+  <div><h1>Trend articles</h1><p class="muted small">From Trend Business Success, checked every few hours.{% if last %} Newest found <span class="seen" data-t="{{ last.isoformat() }}{{ '' if last.tzinfo else 'Z' }}"></span>.{% endif %} Click a row for the short version.</p></div>
   <div class="actions"><form method="post" action="/articles/sync"><button class="ghost" type="submit">↻ Check now</button></form>
     <a class="button ghost" href="{{ sources[0] if sources else 'https://success.trendmicro.com' }}" target="_blank" rel="noopener">Business Success ↗</a></div>
 </div>
 {% if synced %}<p class="okmsg">{{ synced }}</p>{% endif %}
-<form class="search wide" method="get"><input name="q" value="{{ q }}" placeholder="Search articles, error text or KA number…">{% if kind %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}</form>
-<nav class="stabs">
-  <a href="/articles" class="{{ 'on' if not kind }}">All <b>{{ kinds.values() | sum }}</b></a>
-  {% for k, n in kinds | dictsort %}<a href="?kind={{ k }}" class="{{ 'on' if kind == k }}"><i class="kd k-{{ k | lower | replace(' ', '-') }}"></i>{{ k }} <b>{{ n }}</b></a>{% endfor %}
-</nav>
-<div class="arts">
-{% for a in rows %}{% set new = a.first_seen and (a.first_seen if a.first_seen.tzinfo else a.first_seen.replace(tzinfo=week.tzinfo)) > week %}
-  <article class="card art">
-    <header><span class="kind k-{{ a.kind | lower | replace(' ', '-') }}">{{ a.kind }}</span>{% if new %}<span class="newtag">New</span>{% endif %}<span class="mono muted small">{{ a.ka }}{{ ' · ' ~ a.published if a.published }}</span></header>
-    <h3><a href="{{ a.url }}" target="_blank" rel="noopener">{{ a.title or a.ka }} ↗</a></h3>
-    {% if a.summary %}<div class="hl issue"><em>Issue</em><p>{{ a.summary }}</p></div>{% endif %}
-    {% if a.solution %}<div class="hl solution"><em>Solution</em><p class="pre">{{ a.solution }}</p></div>{% elif a.fetched_at %}<p class="muted small">No separate solution section. Open the article for details.</p>{% endif %}
-  </article>
-{% else %}
-  <p class="muted">No articles yet. Press <b>Check now</b>. If nothing appears, the server may not be able to reach success.trendmicro.com.</p>
-{% endfor %}
+<form class="filters" method="get" id="af">
+  <input name="q" value="{{ q }}" placeholder="Search title, CVE, error text or KA number…" class="fq">
+  <label class="dd"><span>Type</span><select name="kind" onchange="this.form.submit()">
+    <option value="">All ({{ kinds.values() | sum }})</option>
+    {% for k, n in kinds | dictsort %}<option value="{{ k }}" {{ 'selected' if kind == k }}>{{ k }} ({{ n }})</option>{% endfor %}
+  </select></label>
+  {% if q or kind %}<a class="clear" href="/articles">Clear</a>{% endif %}
+</form>
+<div class="kbrows arows card">
+  <div class="kbhead"><span>Article</span><span>Type</span><span>KA</span><span>Date</span><span></span></div>
+  {% for a in rows %}{% set new = a.first_seen and (a.first_seen if a.first_seen.tzinfo else a.first_seen.replace(tzinfo=week.tzinfo)) > week %}
+  {% set summ = a.summary if not junk(a.summary) else '' %}{% set sol = a.solution if not junk(a.solution) else '' %}
+  <details class="kbrow">
+    <summary>
+      <span class="kt"><i class="chev"></i><b>{{ a.title or a.ka }}</b>{% if new %}<span class="newtag">New</span>{% endif %}</span>
+      <span><span class="kind k-{{ a.kind | lower | replace(' ', '-') }}">{{ a.kind }}</span></span>
+      <span class="mono muted small">{{ a.ka }}</span>
+      <span class="muted small nowrap">{{ a.published or '–' }}</span>
+      <a class="open" href="{{ a.url }}" target="_blank" rel="noopener" title="Open on Business Success">↗</a>
+    </summary>
+    <div class="kbbody">
+      {% if summ %}<div class="hl issue"><em>What it is</em><div class="pre clamp">{{ summ }}</div></div>{% endif %}
+      {% if sol %}<div class="hl solution"><em>What to do</em><div class="pre clamp">{{ sol }}</div></div>{% endif %}
+      {% if not summ and not sol %}<p class="muted small">No short version could be read from this article.</p>{% endif %}
+      <div class="kbact"><a class="button ghost small-btn" href="{{ a.url }}" target="_blank" rel="noopener">Open full article ↗</a></div>
+    </div>
+  </details>
+  {% else %}
+  <p class="muted pad">{{ 'Nothing matches.' if q or kind else 'No articles yet. Press Check now. If nothing appears, the server may not be able to reach success.trendmicro.com.' }}</p>
+  {% endfor %}
 </div>
 {% endblock %}

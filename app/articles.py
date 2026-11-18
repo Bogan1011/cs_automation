@@ -129,6 +129,17 @@ _DATE = re.compile(r"\b((?:updated|published|last updated|modified)\s*:?\s*)?"
                    r"\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{4})", re.I)
 
 
+# Page furniture on Business Success articles: labels, metadata and status lines that aren't content.
+_META = re.compile(r"^(id|category|keywords?|product\s*/\s*version( includes)?|last updated|updated|published|"
+                   r"under investigation|solution id|article id|rating|views?|ka-\d+)\b\s*:?", re.I)
+
+
+def is_junk(text: str) -> bool:
+    """True for a stored summary/solution that is only page metadata (from the first parser)."""
+    t = (text or "").strip()
+    return not t or bool(re.match(r"^(id:\s*ka-|under investigation|keywords:)", t, re.I)) or len(re.sub(r"(?im)^(id|category):.*$", "", t).strip()) < 15
+
+
 def _section(lines: list[str], head: re.Pattern, limit: int) -> str:
     out, on = [], False
     for line in lines:
@@ -157,7 +168,7 @@ def read_article(html: str) -> dict:
         start = lines.index(title) + 1 if title in lines else 0
     except ValueError:
         start = 0
-    body = lines[start:]
+    body = [l for l in lines[start:] if not _META.match(l) and l != title and not l.startswith(title)]
     summary = _section(body, _SUM, 600)
     if not summary:
         summary = " ".join(l for l in body if len(l) > 60)[:600]
@@ -192,6 +203,10 @@ def sync(transport: httpx.BaseTransport | None = None, max_new: int = 20) -> int
                     added += 1
                 elif a["title"] and not row.title:
                     row.title = a["title"]
+        s.commit()
+        for row in s.scalars(select(TrendArticle).where(TrendArticle.fetched_at.is_not(None))):
+            if is_junk(row.summary) and is_junk(row.solution):  # read again with the better parser
+                row.fetched_at = None
         s.commit()
         todo = s.scalars(select(TrendArticle).where(TrendArticle.fetched_at.is_(None))
                          .order_by(TrendArticle.ka.desc()).limit(max_new)).all()

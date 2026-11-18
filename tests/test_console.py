@@ -451,3 +451,15 @@ def test_troubleshooting_guides_list_search_and_render():
         assert "dsa_control.cmd -r" in g and "On this page" in g and "ds-agent-health-windows.ps1" in g
         assert http.get("/troubleshooting/deep-security/..%2Fsecret").status_code == 404
         assert http.get("/troubleshooting/nope/x").status_code == 404
+
+
+def test_article_parser_skips_page_metadata():
+    page = """<html><head><title>CUSTOMER ADVISORY: Kernel flaw | Trend</title></head><body><h1>CUSTOMER ADVISORY: Kernel flaw</h1>
+    <p>Under Investigation</p><p>Keywords: CUSTOMER ADVISORY: Kernel flaw</p><p>Product / Version includes: Vision One All</p>
+    <p>Last updated: 2026/11/10</p><h2>Summary</h2><p>A use-after-free in the IPv4 TCP stack lets a remote attacker crash the host.</p>
+    <h2>Solution</h2><p>Apply the vendor kernel update and restart the agent.</p><p>ID: KA-0099999</p><p>Category: Advisory</p></body></html>"""
+    d = articles.read_article(page)
+    assert d["summary"].startswith("A use-after-free") and "Keywords" not in d["summary"]
+    assert "kernel update" in d["solution"] and "ID:" not in d["solution"]
+    assert articles.is_junk("ID: KA-0025062\nCategory:") and articles.is_junk("Under Investigation Keywords: x")
+    assert not articles.is_junk("Apply the vendor kernel update and restart the agent.")

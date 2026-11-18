@@ -396,7 +396,7 @@ def articles_page(request: Request, kind: str = "", q: str = "", synced: str = "
         week = utcnow() - timedelta(days=7)
         return _render(request, "console/articles.html", {"rows": rows, "kind": kind, "q": q, "kinds": kinds,
                                                            "synced": synced, "last": last, "week": week,
-                                                           "sources": settings.article_sources})
+                                                           "sources": settings.article_sources, "junk": articles.is_junk})
 
 
 @router.post("/articles/sync")

@@ -2,22 +2,28 @@
 {% from "console/_m.html" import prod, icon with context %}
 {% block title %}Scripts · CS Console{% endblock %}
 {% block content %}
-<div class="bar head"><div><h1>Troubleshooting scripts</h1><p class="muted small">Read-only health checks: they look at services, versions, connectivity and logs, change nothing, and save a report you can attach to a Trend case.</p></div></div>
+<div class="bar head"><div><h1>Scripts</h1><p class="muted small">Read-only health checks. They change nothing and save a report you can attach to a Trend case. Click a row for how to run it.</p></div>
+  <div class="actions"><a class="button ghost" href="/troubleshooting">Troubleshooting guides</a></div></div>
 <nav class="stabs">
   <a href="/scripts" class="{{ 'on' if not product }}">All <b>{{ counts.values() | sum }}</b></a>
   {% for k, v in SCRIPT_PRODUCTS.items() %}<a href="?product={{ k }}" class="{{ 'on' if product == k }}"><i class="pdot p-{{ k }}"></i>{{ v }} <b>{{ counts[k] }}</b></a>{% endfor %}
 </nav>
-{% for k, v in SCRIPT_PRODUCTS.items() %}{% set group = scripts | selectattr('product', 'equalto', k) | list %}{% if group %}
-<h2 class="grp"><i class="pdot p-{{ k }}"></i>{{ v }}</h2>
-<div class="sgrid">
-{% for s in group %}
-  <div class="card script">
-    <header><span class="os">{{ icon('win' if s.platform == 'Windows' else 'linux', 15) }}{{ s.platform }}</span><span class="mono muted small">{{ s.name }}</span></header>
-    <h3>{{ s.summary }}</h3>
-    <p class="muted small">{{ s.details }}</p>
-    <code class="run">{{ s.run }}</code>
-    <footer><a class="button ghost" href="/scripts/{{ s.product }}/{{ s.name }}">View</a><a class="button" href="/scripts/{{ s.product }}/{{ s.name }}/raw?download=1">Download</a></footer>
-  </div>
-{% endfor %}
-</div>{% endif %}{% endfor %}
+<div class="kbrows srows card">
+  <div class="kbhead"><span>Script</span><span>Product</span><span>OS</span><span></span></div>
+  {% for s in scripts %}
+  <details class="kbrow">
+    <summary>
+      <span class="kt"><i class="chev"></i><b>{{ s.summary }}</b></span>
+      <span>{{ prod(s.product) }}</span>
+      <span class="os-chip">{{ s.platform }}</span>
+      <span class="kbact"><a class="button ghost small-btn" href="/scripts/{{ s.product }}/{{ s.name }}">View</a><a class="button small-btn" href="/scripts/{{ s.product }}/{{ s.name }}/raw?download=1">Download</a></span>
+    </summary>
+    <div class="kbbody">
+      <p class="muted small mono">{{ s.name }}</p>
+      {% if s.details %}<p class="small">{{ s.details }}</p>{% endif %}
+      <code class="run">{{ s.run }}</code>
+    </div>
+  </details>
+  {% endfor %}
+</div>
 {% endblock %}
