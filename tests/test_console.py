@@ -465,3 +465,25 @@ def test_article_parser_skips_page_metadata():
     assert "kernel update" in d["solution"] and "ID:" not in d["solution"]
     assert articles.is_junk("ID: KA-0025062\nCategory:") and articles.is_junk("Under Investigation Keywords: x")
     assert not articles.is_junk("Apply the vendor kernel update and restart the agent.")
+
+
+def test_full_article_list_read_from_page_data():
+    """Trend's product pages carry the whole (paged-in-the-browser) list as data, not as links."""
+    items = ",".join('{"articlenumber":"KA-00%05d","title":"Agent issue number %d on Linux","knowledgearticleviews":%d,'
+                     '"modifiedon":"2026-10-%02dT00:00:00Z"}' % (23000 + i, i, i * 10, 1 + i % 28) for i in range(1, 41))
+    page = LIST_HTML.replace("</body>", f"<script>var list=[{items}];</script></body>")
+
+    def handler(req: httpx.Request):
+        if "/solution/" in req.url.path:
+            return httpx.Response(200, html="<h1>x</h1><h2>Solution</h2><p>Do the thing that fixes it properly.</p>")
+        return httpx.Response(200, html=page)
+    assert articles.sync(httpx.MockTransport(handler)) == 42
+    with SessionLocal() as s:
+        a = s.get(TrendArticle, "KA-0023040")
+        assert a.title == "Agent issue number 40 on Linux" and a.views == 400 and not a.pinned
+        assert s.get(TrendArticle, "KA-0025062").pinned
+    assert "40 with a view count" in articles.check(httpx.MockTransport(handler))
+    with TestClient(app) as http:
+        login(http)
+        page = http.get("/articles?sort=views").text
+        assert page.index("Agent issue number 40") < page.index("Agent issue number 39") and "Top viewed" in page

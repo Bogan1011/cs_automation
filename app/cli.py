@@ -148,6 +148,8 @@ def main(argv=None):
     g.add_argument("--name")
     g.add_argument("--all", action="store_true", help="every client")
     rm.add_argument("--yes", action="store_true", help="skip the confirmation question")
+    sub.add_parser("articles-check", help="show what the Trend article reader finds on each product page (no changes)")
+    sub.add_parser("articles-sync", help="read the Trend product pages now and save new articles")
     sub.add_parser("forget-graph", help="delete the stored Microsoft 365 sign-in and case email sync state")
     t = sub.add_parser("test", help="check a client's key and print endpoint count")
     t.add_argument("--name", required=True)
@@ -225,6 +227,12 @@ def main(argv=None):
                 remove_client(s, c)
             s.commit()
             print(f"Removed {names}")
+        elif args.cmd == "articles-check":
+            from . import articles
+            print(articles.check())
+        elif args.cmd == "articles-sync":
+            from . import articles
+            print(f"{articles.sync()} new articles")
         elif args.cmd == "forget-graph":
             n = s.query(SyncState).delete()
             s.commit()

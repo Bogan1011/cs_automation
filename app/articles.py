@@ -108,6 +108,113 @@ def find_articles(html: str, base: str) -> dict[str, dict]:
     return found
 
 
+_KA_ANY = re.compile(r"KA-\d{6,8}")
+_JSON_STR = r'"((?:[^"\\]|\\.){0,600})"'
+_TITLE_KEY = re.compile(r'"([\w.@-]*(?:title|subject|name)[\w.@-]*)"\s*:\s*' + _JSON_STR, re.I)
+_DESC_KEY = re.compile(r'"([\w.@-]*(?:description|summary|abstract|snippet|content)[\w.@-]*)"\s*:\s*' + _JSON_STR, re.I)
+_VIEW_KEY = re.compile(r'"([\w.@-]*(?:view|rating|helpful|popular|hits)[\w.@-]*)"\s*:\s*"?(\d{1,9})', re.I)
+_DATE_KEY = re.compile(r'"([\w.@-]*(?:modified|published|created|updated|date)[\w.@-]*)"\s*:\s*"(\d{4}-\d{2}-\d{2}[^"]{0,20})"', re.I)
+
+
+def _unjson(v: str) -> str:
+    try:
+        import json
+        v = json.loads('"' + v + '"')
+    except ValueError:
+        pass
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html_unescape(v))).strip()
+
+
+def html_unescape(v: str) -> str:
+    import html as _h
+    return _h.unescape(v)
+
+
+def _enclosing_object(text: str, p: int, reach: int = 4000) -> tuple[int, int] | None:
+    """Start/end of the JSON object {...} that contains position p, if any."""
+    depth, i = 0, p
+    while i > max(0, p - reach):
+        i -= 1
+        c = text[i]
+        if c == "}":
+            depth += 1
+        elif c == "{":
+            if depth == 0:
+                break
+            depth -= 1
+    else:
+        return None
+    if text[i] != "{":
+        return None
+    depth, j = 0, i
+    while j < min(len(text), i + reach * 2):
+        c = text[j]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return i, j + 1
+        j += 1
+    return None
+
+
+def _segments(raw: str) -> list[tuple[str, str, int, bool]]:
+    """Each article's chunk of embedded data: the JSON object around a KA number, or the markup between
+    it and its neighbours."""
+    text = html_unescape(raw) if "&quot;" in raw else raw
+    pos = [m.start() for m in _KA_ANY.finditer(text)]
+    out = []
+    for i, p in enumerate(pos):
+        obj = _enclosing_object(text, p)
+        if obj and obj[1] - obj[0] < 8000 and len(_KA_ANY.findall(text[obj[0]:obj[1]])) <= 3:
+            lo, hi = obj
+            out.append((text[p:p + 12], text[lo:hi], p - lo, True))
+            continue
+        else:
+            lo = (pos[i - 1] + p) // 2 if i else max(0, p - 900)
+            hi = pos[i + 1] if i + 1 < len(pos) else min(len(text), p + 900)
+            lo, hi = max(lo, p - 900), min(hi, p + 900)
+        seg = text[lo:hi]
+        cut = seg.find("<script", p - lo)  # markup mode: never read into a script block
+        out.append((text[p:p + 12], seg[:cut] if cut > 0 else seg, p - lo, False))
+    return out
+
+
+def find_embedded(raw: str, base: str) -> dict[str, dict]:
+    """Articles that are in the page as data (JSON or hidden markup) rather than as links.
+    Trend's product pages ship the whole list in the page and split it into pages in the browser."""
+    found: dict[str, dict] = {}
+    for ka_raw, seg, at, is_obj in _segments(raw):
+        ka = _KA_ANY.match(ka_raw).group(0).upper()
+        cur = found.setdefault(ka, {"title": "", "url": urljoin(base, f"/solution/{ka}"), "summary": "", "views": None,
+                                    "date": ""})
+        if not is_obj:
+            seg = re.sub(r"<script.*?(</script>|$)", " ", seg, flags=re.S)
+        titles = [(abs(m.start() - at), _unjson(m.group(2))) for m in _TITLE_KEY.finditer(seg)] if is_obj else []
+        titles = [t for t in titles if 8 <= len(t[1]) <= 300 and not _KA_ANY.fullmatch(t[1]) and not t[1].startswith("http")]
+        if titles and not cur["title"]:
+            cur["title"] = min(titles)[1]
+        if not cur["title"]:  # markup: the longest readable text right around the number
+            bits = [b.strip() for b in re.split(r"<[^>]+>", seg) if b.strip()]
+            bits = [html_unescape(b) for b in bits if 15 <= len(b) <= 300 and not re.search(r"[{};=]|function|var ", b)]
+            if bits:
+                cur["title"] = max(bits, key=len)
+        if not is_obj:
+            continue
+        descs = [_unjson(m.group(2)) for m in _DESC_KEY.finditer(seg)]
+        descs = [d for d in descs if len(d) > 30]
+        if descs and not cur["summary"]:
+            cur["summary"] = max(descs, key=len)[:600]
+        for m in _VIEW_KEY.finditer(seg):
+            n = int(m.group(2))
+            cur["views"] = max(cur["views"] or 0, n)
+        m = _DATE_KEY.search(seg)
+        if m and not cur["date"]:
+            cur["date"] = m.group(2)[:10]
+    return {k: v for k, v in found.items() if v["title"]}
+
+
 def kind_of(title: str) -> str:
     t = (title or "").upper()
     for key, label in (("SECURITY ALERT", "Security alert"), ("SECURITY BULLETIN", "Security alert"),
@@ -208,7 +315,7 @@ def page_links(html: str, base: str, limit: int = 25) -> list[str]:
     return out[:limit]
 
 
-def sync(transport: httpx.BaseTransport | None = None, max_new: int = 40) -> int:
+def sync(transport: httpx.BaseTransport | None = None, max_new: int = 30) -> int:
     """Look for new articles on every product page. Returns how many were added."""
     added = 0
     now = utcnow()
@@ -222,8 +329,12 @@ def sync(transport: httpx.BaseTransport | None = None, max_new: int = 40) -> int
             except httpx.HTTPError as exc:
                 log.warning("article list %s failed: %s", src, exc)
                 continue
-            first = find_articles(r.text, str(r.url))  # the page's own list = Trend's highlighted advisories
+            first = find_articles(r.text, str(r.url))  # the page's own links = Trend's highlighted advisories
             found = dict(first)
+            for ka, a in find_embedded(r.text, str(r.url)).items():  # the full list shipped in the page as data
+                found.setdefault(ka, a)
+                for k in ("summary", "views", "date"):
+                    found[ka].setdefault(k, a[k])
             for extra in page_links(r.text, str(r.url)):
                 try:
                     pr = http.get(extra)
@@ -248,6 +359,12 @@ def sync(transport: httpx.BaseTransport | None = None, max_new: int = 40) -> int
                     row.sources = ((row.sources or "") + " " + key).strip()
                 if ka in first:
                     row.pinned = True
+                if a.get("views") is not None:
+                    row.views = a["views"]
+                if a.get("summary") and not row.summary:
+                    row.summary = a["summary"]
+                if a.get("date") and not row.published:
+                    row.published = a["date"]
                 row.last_listed = now
             s.commit()
         for row in s.scalars(select(TrendArticle).where(TrendArticle.fetched_at.is_not(None))):
@@ -265,7 +382,8 @@ def sync(transport: httpx.BaseTransport | None = None, max_new: int = 40) -> int
                 log.warning("article %s failed: %s", row.ka, exc)
                 continue
             row.title = row.title or d["title"]
-            row.summary, row.solution, row.published = d["summary"], d["solution"], d["published"]
+            row.summary = d["summary"] or row.summary
+            row.solution, row.published = d["solution"], d["published"] or row.published
             row.kind = kind_of(row.title)
             row.product = _product(row.title + " " + d["summary"])
             row.fetched_at = utcnow()
@@ -285,3 +403,24 @@ def run_safely():
             log.info("%d new Trend articles", n)
     except Exception:  # never let the scheduler die
         log.exception("article sync failed")
+
+
+def check(transport: httpx.BaseTransport | None = None) -> str:
+    """What the reader finds on each product page right now (for `python -m app.cli articles-check`)."""
+    lines = []
+    with httpx.Client(transport=transport, timeout=25, follow_redirects=True, headers={"User-Agent": UA}) as http:
+        for src in settings.article_sources:
+            try:
+                r = http.get(src)
+                r.raise_for_status()
+            except httpx.HTTPError as exc:
+                lines.append(f"{src}\n  FAILED: {exc}")
+                continue
+            links, data = find_articles(r.text, str(r.url)), find_embedded(r.text, str(r.url))
+            raw = len(set(_KA_ANY.findall(r.text)))
+            lines.append(f"{source_key(src)}: {len(r.text) // 1024} KB, {raw} KA numbers in the page, "
+                         f"{len(links)} as links, {len(data)} read from page data, "
+                         f"{sum(1 for a in data.values() if a['views'] is not None)} with a view count")
+            for ka, a in list(data.items())[:4]:
+                lines.append(f"  {ka}  {a['title'][:90]!r}  views={a['views']} date={a['date']!r}")
+    return "\n".join(lines)

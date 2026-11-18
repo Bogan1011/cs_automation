@@ -380,7 +380,7 @@ def library_delete(request: Request, case_id: int):
 # ---------- Trend articles ----------
 
 @router.get("/articles", response_class=HTMLResponse)
-def articles_page(request: Request, kind: str = "", q: str = "", synced: str = "", src: str = ""):
+def articles_page(request: Request, kind: str = "", q: str = "", synced: str = "", src: str = "", sort: str = ""):
     _user(request)
     with SessionLocal() as s:
         stmt = select(TrendArticle)
@@ -392,7 +392,11 @@ def articles_page(request: Request, kind: str = "", q: str = "", synced: str = "
             like = f"%{word}%"
             stmt = stmt.where(or_(TrendArticle.title.ilike(like), TrendArticle.summary.ilike(like),
                                   TrendArticle.solution.ilike(like), TrendArticle.ka.ilike(like)))
-        rows = s.scalars(stmt.order_by(TrendArticle.ka.desc()).limit(400)).all()
+        rows = s.scalars(stmt.order_by(TrendArticle.ka.desc()).limit(1000)).all()
+        if sort == "views":
+            rows.sort(key=lambda r: -(r.views or 0))
+        ranked = sorted((r for r in rows if r.views), key=lambda r: -r.views)[:10]
+        top = {r.ka for r in ranked}
         every = s.scalars(select(TrendArticle.sources)).all()
         src_counts = {k: sum(1 for x in every if k in (x or "").split()) for k in articles.SOURCE_LABELS}
         kinds = dict(s.execute(select(TrendArticle.kind, func.count()).group_by(TrendArticle.kind)).all())
@@ -400,7 +404,7 @@ def articles_page(request: Request, kind: str = "", q: str = "", synced: str = "
         week = utcnow() - timedelta(days=7)
         return _render(request, "console/articles.html", {
             "pinned": [r for r in rows if r.pinned], "rows": [r for r in rows if not r.pinned], "kind": kind, "q": q,
-            "src": src, "kinds": kinds, "src_counts": src_counts, "total": len(every), "SOURCES": articles.SOURCE_LABELS,
+            "src": src, "sort": sort, "top": top, "kinds": kinds, "src_counts": src_counts, "total": len(every), "SOURCES": articles.SOURCE_LABELS,
             "synced": synced, "last": last, "week": week, "sources": settings.article_sources,
             "junk": articles.is_junk, "every_min": settings.article_interval_minutes})
 

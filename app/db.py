@@ -196,6 +196,7 @@ class TrendArticle(Base):
     sources: Mapped[str] = mapped_column(String(120), default="")
     pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     last_listed: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    views: Mapped[int | None] = mapped_column(Integer, nullable=True)  # view count from Trend's list, when it has one
 
 
 def _engine():
