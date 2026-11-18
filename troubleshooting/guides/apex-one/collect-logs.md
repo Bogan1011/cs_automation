@@ -4,6 +4,7 @@ category: Logs & diagnostics
 os: Windows
 summary: Use Trend's Case Diagnostic Tool (CDT) to capture debug logs while you reproduce the issue.
 scripts: apex-agent-health.ps1, apex-agent-connectivity.ps1
+tools: cdt
 ---
 ## 1. Get the Case Diagnostic Tool
 The **Case Diagnostic Tool (CDT)** is Trend's official log collector for Apex One. Use the latest version from Trend support. An old copy may not support the current agent.

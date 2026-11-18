@@ -1173,3 +1173,7 @@ html{scroll-behavior:auto}
 .toptag{margin-left:8px;flex:none;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;white-space:nowrap;color:var(--brand-1);border:1px solid color-mix(in srgb,var(--brand-1) 55%,transparent);background:color-mix(in srgb,var(--brand-1) 10%,transparent)}
 :root[data-theme="gold-light"] .toptag{color:#8A5D00}
 .arows .kt{min-width:0}.arows .kt b{overflow-wrap:anywhere;min-width:0}
+.trows .kbhead,.trows .kbrow>summary{grid-template-columns:minmax(0,1fr) 150px 300px 130px}
+.trows .fname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trows .dl{justify-self:end}
+@media (max-width:900px){.trows .kbrow>summary{grid-template-columns:1fr auto}.trows .kbrow>summary>span:nth-child(2),.trows .kbrow>summary>span:nth-child(3){display:none}}

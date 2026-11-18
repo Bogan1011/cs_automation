@@ -496,3 +496,20 @@ def test_encoded_article_titles_are_shown_readable():
     with TestClient(app) as http:
         login(http)
         assert "AWS PAYG Upgrade from Cloud One to Vision One" in http.get("/articles").text
+
+
+def test_seed_standard_tools_and_show_them_in_guides():
+    from app import cli
+    link = "https://contoso-my.sharepoint.com/:f:/g/personal/x/Tools?e=1"
+    cli.main(["seed-tools", "--url", link])
+    cli.main(["seed-tools", "--url", link])  # running it again updates, never duplicates
+    with SessionLocal() as s:
+        assert s.query(ToolLink).count() == 5
+    cli.main(["seed-tools", "--url", "https://contoso-my.sharepoint.com/:u:/g/scut.zip", "--only", "scut"])
+    with TestClient(app) as http:
+        login(http)
+        page = http.get("/tools").text
+        assert "Apex One Security Agent Cleanup Tool (SCUT)" in page and "cdt-26-win-en-1270.zip" in page
+        assert "/:u:/g/scut.zip" in page
+        g = http.get("/troubleshooting/apex-one/uninstall-agent").text
+        assert "Trend tools for this" in g and "/:u:/g/scut.zip" in g

@@ -4,6 +4,7 @@ category: Connectivity
 os: Windows
 summary: Check the agent services, the server address and port the agent uses, and the network path to the server.
 scripts: apex-agent-health.ps1, apex-agent-connectivity.ps1
+tools: cdt, easyfix-cert
 ---
 ## 1. Services
 Run **apex-agent-health**. These should be running: Apex One NT RealTime Scan (ntrtscan), Apex One NT Listener (tmlisten) and Apex One Common Client Solution Framework (TmCCSF). Start any that are stopped and check that they stay up.

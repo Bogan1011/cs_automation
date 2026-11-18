@@ -4,6 +4,7 @@ category: Uninstall
 os: Windows
 summary: Remove the agent from the console or locally with the uninstall password, and use Trend's removal tool when that fails.
 scripts: apex-agent-health.ps1
+tools: scut
 ---
 Applies to Apex One (on-prem) and Apex One as a Service / Standard Endpoint Protection.
 

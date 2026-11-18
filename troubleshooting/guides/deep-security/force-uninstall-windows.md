@@ -4,6 +4,7 @@ category: Uninstall
 os: Windows
 summary: Turn off self-protection, reset the agent, uninstall it, and clean up by hand only if the normal uninstall fails.
 scripts: ds-agent-health-windows.ps1
+tools: dsa-cut, dsa-support-tool
 ---
 Applies to the Deep Security Agent used by Deep Security, Cloud One Workload Security and Server & Workload Protection.
 

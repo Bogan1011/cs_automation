@@ -148,6 +148,9 @@ def main(argv=None):
     g.add_argument("--name")
     g.add_argument("--all", action="store_true", help="every client")
     rm.add_argument("--yes", action="store_true", help="skip the confirmation question")
+    st = sub.add_parser("seed-tools", help="add or update the team's standard Trend tools (DSA CUT, SCUT, CDT, ...)")
+    st.add_argument("--url", required=True, help="OneDrive/SharePoint link (the shared Tools folder, or a file link)")
+    st.add_argument("--only", default="", help="update just one tool by key: dsa-cut, dsa-support-tool, scut, cdt, easyfix-cert")
     sub.add_parser("articles-check", help="show what the Trend article reader finds on each product page (no changes)")
     asy = sub.add_parser("articles-sync", help="read the Trend product pages now and save new articles")
     asy.add_argument("--read", default="30", help="how many article pages to read for their solution text (default 30)")
@@ -228,6 +231,22 @@ def main(argv=None):
                 remove_client(s, c)
             s.commit()
             print(f"Removed {names}")
+        elif args.cmd == "seed-tools":
+            from .db import ToolLink
+            from .toolkit import TOOLS
+            if not args.url.lower().startswith("https://"):
+                sys.exit("The link must start with https://")
+            for t in TOOLS:
+                if args.only and t["key"] != args.only:
+                    continue
+                row = s.scalars(select(ToolLink).where(ToolLink.key == t["key"])).first()
+                if row is None:
+                    row = ToolLink(key=t["key"], added_by="setup")
+                    s.add(row)
+                row.name, row.product, row.description = t["name"], t["product"], t["description"]
+                row.file_name, row.url = t["file_name"], args.url.strip()
+                print(f"{t['key']:<18} {t['name']}")
+            s.commit()
         elif args.cmd == "articles-check":
             from . import articles
             print(articles.check())

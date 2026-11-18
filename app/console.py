@@ -127,7 +127,10 @@ def guide_page(request: Request, product: str, name: str):
     body, toc = guides.render(g["body"])
     scripts = [s for s in list_scripts(product) if s["name"] in g["scripts"]]
     more = [x for x in guides.all_guides() if x["product"] == product and x["slug"] != name]
-    return _render(request, "console/guide.html", {"g": g, "body": body, "toc": toc, "scripts": scripts, "more": more})
+    with SessionLocal() as s:
+        tools = s.scalars(select(ToolLink).where(ToolLink.key.in_(g["tools"]))).all() if g["tools"] else []
+    return _render(request, "console/guide.html", {"g": g, "body": body, "toc": toc, "scripts": scripts, "more": more,
+                                                   "tools": tools})
 
 
 # ---------- work board ----------
@@ -432,7 +435,7 @@ def tools_page(request: Request):
 
 @router.post("/tools")
 def tools_add(request: Request, name: str = Form(...), url: str = Form(...), product: str = Form("other"),
-              description: str = Form(""), edit_id: int = Form(0)):
+              description: str = Form(""), file_name: str = Form(""), edit_id: int = Form(0)):
     me = _user(request)
     if not re.match(r"^https?://", url.strip(), re.I):
         raise HTTPException(400, "The link must start with https://")
@@ -444,6 +447,7 @@ def tools_add(request: Request, name: str = Form(...), url: str = Form(...), pro
         t.name, t.url = name.strip()[:160], url.strip()[:1000]
         t.product = product if product in PRODUCTS else "other"
         t.description = description.strip()
+        t.file_name = file_name.strip()[:200]
         s.commit()
     return RedirectResponse("/tools", status_code=303)
 

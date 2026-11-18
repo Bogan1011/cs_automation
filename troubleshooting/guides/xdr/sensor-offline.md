@@ -4,6 +4,7 @@ category: Connectivity
 os: Windows, Linux
 summary: Check the agent services, outbound 443 to the Vision One region, and TLS inspection, which is the most common cause.
 scripts: xdr-sensor-health-windows.ps1, xdr-sensor-health-linux.sh
+tools: easyfix-cert
 ---
 ## 1. Run the health script
 **xdr-sensor-health** lists the Trend services, the agent version, and tests HTTPS to the Vision One hosts for your region. Pass the region, for example `-Region in` for India or `-Region sg` for Singapore.

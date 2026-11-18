@@ -12,6 +12,7 @@
   <aside class="guide-side">
     {% if toc %}<div class="card gs-box"><em>On this page</em>{% for a, t in toc %}<a href="#{{ a }}">{{ t }}</a>{% endfor %}</div>{% endif %}
     {% if scripts %}<div class="card gs-box"><em>Scripts for this</em>{% for s in scripts %}<a href="/scripts/{{ s.product }}/{{ s.name }}">{{ icon('win' if s.platform == 'Windows' else 'linux', 13) }} {{ s.name }}</a>{% endfor %}</div>{% endif %}
+    {% if tools %}<div class="card gs-box"><em>Trend tools for this</em>{% for t in tools %}<a href="{{ t.url }}" target="_blank" rel="noopener">⬇ {{ t.name }}</a>{% endfor %}</div>{% endif %}
     {% if more %}<div class="card gs-box"><em>More {{ PRODUCTS[g.product] }} guides</em>{% for x in more %}<a href="/troubleshooting/{{ x.product }}/{{ x.slug }}">{{ x.title }}</a>{% endfor %}</div>{% endif %}
   </aside>
   <article class="card guide">{{ body | safe }}</article>

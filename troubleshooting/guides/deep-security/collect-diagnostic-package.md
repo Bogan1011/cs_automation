@@ -4,6 +4,7 @@ category: Logs & diagnostics
 os: Windows, Linux
 summary: Create the agent's diagnostic package from the console or locally with dsa_control -d, and the manager's package for on-prem Deep Security.
 scripts: ds-collect-diagnostics-windows.ps1, ds-collect-diagnostics-linux.sh
+tools: dsa-support-tool
 ---
 Trend support almost always asks for this first. Collect it while the problem is happening, or right after reproducing it.
 

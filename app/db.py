@@ -174,6 +174,8 @@ class ToolLink(Base):
     url: Mapped[str] = mapped_column(String(1000))
     product: Mapped[str] = mapped_column(String(30), default="other")
     description: Mapped[str] = mapped_column(Text, default="")
+    file_name: Mapped[str] = mapped_column(String(200), default="")  # which file to pick when the link is a folder
+    key: Mapped[str] = mapped_column(String(40), default="")  # set for the standard tools in app/toolkit.py
     added_by: Mapped[str] = mapped_column(String(80), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

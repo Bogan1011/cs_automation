@@ -134,7 +134,8 @@ def _load(path: Path) -> dict:
     meta, body = _meta(path.read_text(encoding="utf-8"))
     return {"product": path.parent.name, "slug": path.stem, "title": meta.get("title", path.stem.replace("-", " ")),
             "category": meta.get("category", "Other"), "os": meta.get("os", ""), "summary": meta.get("summary", ""),
-            "scripts": [s.strip() for s in meta.get("scripts", "").split(",") if s.strip()], "body": body}
+            "scripts": [s.strip() for s in meta.get("scripts", "").split(",") if s.strip()],
+            "tools": [s.strip() for s in meta.get("tools", "").split(",") if s.strip()], "body": body}
 
 
 def all_guides() -> list[dict]:
