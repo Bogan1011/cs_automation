@@ -851,3 +851,12 @@ pre.code{font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;o
 .art .hl p{max-height:12em;overflow:auto}
 @media (max-width:900px){.fgrid{grid-template-columns:1fr}.fw.wide{grid-column:auto}.wcols,.grid2,.grid4{grid-template-columns:1fr}
   .arts,.kbgrid,.sgrid{grid-template-columns:1fr}.search input{min-width:0}.wlist .owner{display:none}}
+.drop{position:relative;display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;
+  padding:28px 18px;border:2px dashed color-mix(in srgb,var(--fg) 22%,transparent);border-radius:16px;cursor:pointer;transition:all .2s;font-weight:400!important}
+.drop input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.drop:hover,.drop.over{border-color:#30d158;background:color-mix(in srgb,#30d158 8%,transparent)}
+.drop.busy{opacity:.7}
+.drop .dropicon{display:grid;place-items:center;width:46px;height:46px;border-radius:14px;color:#fff;background:linear-gradient(145deg,#0a84ff,#a463ff)}
+.drop b{font-size:15px}
+.drop .fname{font:12.5px ui-monospace,monospace;padding:3px 10px;border-radius:7px;background:var(--line)}
+.paste details.sub summary{cursor:pointer;margin-top:4px}

@@ -161,3 +161,83 @@ def test_tools_links():
             tid = s.query(ToolLink).one().id
         http.post(f"/tools/{tid}/delete")
         assert "contoso-my.sharepoint.com/x" not in http.get("/tools").text
+
+
+THREAD = """Hi Akshay,
+
+As discussed on the call, the issue has been resolved after applying critical patch 14.0.13140 to the Apex One server. Agents are connected and patterns updated.
+
+Please let us know if we can close the case.
+
+Thanks & Regards,
+Rahul | Technical Support
+Phone: +91 00000
+
+From: Akshay
+Sent: Monday
+Subject: RE: TM-04032776 ntrtscan not starting
+
+Hi team, logs attached. The cause seems to be due to the TMUMH driver left from the old version.
+
+From: Akshay
+Sent: Friday
+Subject: TM-04032776 ntrtscan not starting
+
+Hello Team,
+
+Real-time scan service (ntrtscan) is not starting on 12 Windows 2016 servers after upgrading the Apex One agent. Event log shows error 7024.
+
+Regards,
+Akshay
+"""
+
+
+def test_thread_without_headings_is_summarised():
+    got = kb.summarize(THREAD, "RE: TM-04032776 ntrtscan not starting")
+    assert got["case_no"] == "TM-04032776" and got["product"] == "apex-one"
+    assert got["issue"].startswith("Real-time scan service (ntrtscan) is not starting")
+    assert got["solution"].startswith("As discussed on the call, the issue has been resolved") and "Phone" not in got["solution"]
+    assert got["root_cause"].startswith("logs attached. The cause seems to be due to the TMUMH driver")
+
+
+def test_upload_eml_fills_the_form():
+    from email.message import EmailMessage
+    m = EmailMessage()
+    m["Subject"] = "RE: TM-04032776 ntrtscan not starting"
+    m["From"] = "support@example.com"
+    m["Date"] = "Tue, 17 Nov 2026 10:00:00 +0530"
+    m.set_content("<p>" + THREAD.replace("\n\n", "</p><p>").replace("\n", "<br>") + "</p>", subtype="html")
+    with TestClient(app) as http:
+        login(http)
+        page = http.post("/library/read-email", files={"mail": ("case.eml", m.as_bytes(), "message/rfc822")}).text
+        assert "Summarised from case.eml" in page
+        assert "TM-04032776" in page and "critical patch 14.0.13140" in page and "ntrtscan) is not starting" in page
+        assert 'value="2026-11-17"' in page  # closed on = mail date
+        bad = http.post("/library/read-email", files={"mail": ("case.pdf", b"%PDF-1.4", "application/pdf")}).text
+        assert "Upload an Outlook .msg or .eml file" in bad
+
+
+def test_outlook_msg_streams_are_read(monkeypatch):
+    """.msg is an OLE file; check the MAPI streams we read (subject 0037, body 1000, HTML 1013, date 0E06)."""
+    import struct
+    from datetime import datetime, timezone
+    from app import mailfile
+    ft = int((datetime(2026, 11, 17, 4, 30, tzinfo=timezone.utc) - datetime(1601, 1, 1, tzinfo=timezone.utc)).total_seconds() * 10**7)
+    props = b"\0" * 32 + struct.pack("<HHIQ", 0x0040, 0x0E06, 0, ft)
+    streams = {"__substg1.0_0037001F": "RE: TM-04032776 ntrtscan not starting".encode("utf-16-le"),
+               "__substg1.0_1000001F": b"",
+               "__substg1.0_10130102": ("<html><body><p>" + THREAD.replace("\n\n", "</p><p>") + "</p></body></html>").encode(),
+               "__properties_version1.0": props}
+
+    class FakeOle:
+        def __init__(self, *_): pass
+        def exists(self, n): return n in streams
+        def openstream(self, n): return __import__("io").BytesIO(streams[n])
+        def close(self): pass
+
+    import olefile
+    monkeypatch.setattr(olefile, "isOleFile", lambda *_: True)
+    monkeypatch.setattr(olefile, "OleFileIO", FakeOle)
+    out = mailfile.read_upload("case.msg", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\0" * 64)
+    assert out["subject"] == "RE: TM-04032776 ntrtscan not starting"
+    assert "critical patch 14.0.13140" in out["body"] and out["date"].date().isoformat() == "2026-11-17"

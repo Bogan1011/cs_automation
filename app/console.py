@@ -7,11 +7,11 @@ import re
 from datetime import date, timedelta
 from pathlib import Path
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from sqlalchemy import func, or_, select
 
-from . import articles, kb
+from . import articles, kb, mailfile
 from .config import settings
 from .db import KnowledgeCase, SessionLocal, ToolLink, TrendArticle, WorkItem, WorkUpdate, utcnow
 
@@ -242,16 +242,31 @@ def library_new(request: Request, from_work: int = 0):
 
 
 @router.post("/library/read-email", response_class=HTMLResponse)
-def library_read_email(request: Request, raw_email: str = Form(""), subject: str = Form(""), client: str = Form("")):
-    """Fill the form from a pasted closure email. Nothing is saved yet."""
+async def library_read_email(request: Request, raw_email: str = Form(""), subject: str = Form(""), client: str = Form(""),
+                             mail: UploadFile | None = File(None)):
+    """Fill the form from an uploaded mail file (.msg / .eml) or pasted text. Nothing is saved yet."""
     _user(request)
     c = _blank_case()
-    got = kb.extract(raw_email, subject)
-    c.update({k: v for k, v in got.items() if v})
+    error, upload = None, None
+    if mail is not None and mail.filename:
+        try:
+            upload = mailfile.read_upload(mail.filename, await mail.read())
+            subject = upload["subject"] or subject
+            raw_email = (f"Subject: {subject}\n" if subject else "") + upload["body"]
+        except mailfile.MailFileError as exc:
+            error = str(exc)
+        except Exception:  # a damaged file should never break the page
+            error = "Couldn't read that file. Try saving the mail again from Outlook, or paste the text instead."
+    got = kb.summarize(raw_email, subject) if raw_email.strip() else None
+    if got:
+        c.update({k: v for k, v in got.items() if v})
+    if upload and upload.get("date"):
+        c["closed_on"] = upload["date"].date().isoformat()
     c.update(raw_email=raw_email, client=client)
     with SessionLocal() as s:
         return _render(request, "console/library_form.html", {"c": c, "edit_id": None, "clients": _clients(s),
-                                                               "read": got, "from_work": 0})
+                                                               "read": got, "from_work": 0, "error": error,
+                                                               "filename": mail.filename if mail else ""})
 
 
 def _parse_date(v: str):

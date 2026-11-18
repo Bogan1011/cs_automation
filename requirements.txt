@@ -9,3 +9,4 @@ cryptography==44.0.0
 reportlab==4.2.5
 python-multipart==0.0.20
 itsdangerous==2.2.0
+olefile==0.47

@@ -1,16 +1,34 @@
 {% extends "base.html" %}
 {% block title %}{{ 'Edit case' if edit_id else 'Add finished case' }} · Case library{% endblock %}
+{% block scripts %}<script>
+(function () {
+  const f = document.getElementById('mailfile'), d = document.getElementById('drop'), form = document.getElementById('mailform');
+  if (!f) return;
+  f.addEventListener('change', () => { if (f.files.length) { d.classList.add('busy'); d.querySelector('b').textContent = 'Reading ' + f.files[0].name + '…'; form.submit(); } });
+  ['dragenter', 'dragover'].forEach(e => d.addEventListener(e, ev => { ev.preventDefault(); d.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(e => d.addEventListener(e, ev => { ev.preventDefault(); d.classList.remove('over'); }));
+  d.addEventListener('drop', ev => { if (ev.dataTransfer.files.length) { f.files = ev.dataTransfer.files; f.dispatchEvent(new Event('change')); } });
+})();
+</script>{% endblock %}
 {% block content %}
 <div class="bar head"><div><a href="{{ '/library/' ~ edit_id if edit_id else '/library' }}" class="back">‹ Case library</a><h1>{{ 'Edit case' if edit_id else 'Add a finished case' }}</h1>
-  <p class="muted small">Paste the closure email and press <b>Read the email</b>. The issue, root cause and solution are filled in for you to check before saving.</p></div></div>
+  <p class="muted small">Upload the case mail. The issue, root cause and solution are filled in for you to check before saving.</p></div></div>
 
 {% if not edit_id %}
-<form method="post" action="/library/read-email" class="card form paste">
-  <label>Closure email <span class="muted">(subject and body, copied from Outlook)</span>
-    <textarea name="raw_email" rows="8" placeholder="Subject: RE: TM-0xxxxxxx …&#10;&#10;Issue: …&#10;Root cause: …&#10;Resolution: …">{{ c.raw_email }}</textarea></label>
+<form method="post" action="/library/read-email" class="card form paste" enctype="multipart/form-data" id="mailform">
+  <label class="drop" id="drop">
+    <input type="file" name="mail" accept=".msg,.eml,.txt,.html,.htm" id="mailfile">
+    <span class="dropicon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7l8 6 8-6"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg></span>
+    <b>Drop the case mail here, or click to choose it</b>
+    <span class="muted small">Outlook .msg or .eml. In Outlook, drag the mail onto your desktop, or use File › Save As. It's read and summarised straight away.</span>
+    {% if filename %}<span class="fname">{{ filename }}</span>{% endif %}
+  </label>
+  <details class="sub" {{ 'open' if c.raw_email and not filename }}><summary class="muted small">Or paste the mail text instead</summary>
+    <textarea name="raw_email" rows="8" placeholder="Subject: RE: TM-0xxxxxxx …&#10;&#10;Issue: …&#10;Root cause: …&#10;Resolution: …">{{ c.raw_email if not filename }}</textarea>
+    <div style="margin-top:8px"><button type="submit" class="ghost">Read the text</button></div></details>
   <input type="hidden" name="client" value="{{ c.client }}">
-  <div><button type="submit" class="ghost">Read the email</button>
-  {% if read is defined %}<span class="muted small">{% if read.issue or read.solution %}Filled in from the email: {{ ['case no.' if read.case_no, 'issue' if read.issue, 'root cause' if read.root_cause, 'solution' if read.solution] | select | join(', ') }}. Check them below.{% else %}No "Issue" or "Solution" headings found, so please fill those in yourself.{% endif %}</span>{% endif %}</div>
+  {% if error %}<p class="err">{{ error }}</p>{% endif %}
+  {% if read %}<p class="okmsg small">{% if read.issue or read.solution %}Summarised{{ ' from ' ~ filename if filename }}: {{ ['case no.' if read.case_no, 'issue' if read.issue, 'root cause' if read.root_cause, 'solution' if read.solution] | select | join(', ') }}. Check and edit below, then save.{% else %}Couldn't find the issue or solution in this mail, so please fill them in below.{% endif %}</p>{% endif %}
 </form>
 {% endif %}
 

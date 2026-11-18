@@ -98,3 +98,79 @@ def extract(email: str, subject: str = "") -> dict:
         "solution": _clean(sections.get("solution", [])),
         "product": guess_product(subject + " " + text),
     }
+
+
+# ---------- whole-thread summary, for mails without "Issue:" / "Solution:" headings ----------
+
+_SPLIT = re.compile(r"^\s*(-{2,}\s*original message\s*-{2,}|_{8,}|from:\s.+|on .{6,80} wrote:)\s*$", re.I | re.M)
+_NOISE = re.compile(r"^\s*(hi|hello|dear|good (morning|afternoon|evening))\b[^.\n]{0,40}[,!]?\s*$|"
+                    r"^\s*(sent|to|cc|subject|date|importance)\s*:|^\s*(thanks|thank you|regards|best regards|"
+                    r"warm regards|kind regards|thanks (and|&) regards)\b|disclaimer|confidential|"
+                    r"this (e-?mail|message) (and any|is intended|may contain)|caution:|external email|"
+                    r"^\s*\[cid:|^\s*<image|^\s*case (number|no|id)\s*:|^\s*(case )?(status|severity|product)\s*:", re.I)
+_SOLVED = re.compile(r"\b(resolv|fix|solution|workaround|work-around|has been (addressed|corrected|applied)|"
+                     r"(please|kindly) (update|upgrade|install|apply|uninstall|restart|reboot|enable|disable|add|exclude|run)|"
+                     r"after (applying|upgrading|updating|installing|restarting|rebooting|the update)|"
+                     r"(issue|problem) (is|was|has been) (now )?(fixed|resolved|gone|solved)|now (working|connected|online)|"
+                     r"hotfix|patch|critical patch|to address|steps?:)", re.I)
+_CAUSE = re.compile(r"\b(root cause|caused by|due to|because|the cause)\b", re.I)
+
+
+def _paragraphs(msg: str) -> list[str]:
+    paras, cur = [], []
+    for line in msg.split("\n"):
+        if _NOISE.search(line):
+            if cur and re.match(r"^\s*(thanks|thank you|regards|best regards|warm regards|kind regards)", line, re.I):
+                paras.append(" ".join(cur)); cur = []
+                break  # signature: the rest of this message is contact details
+            continue
+        if line.strip():
+            cur.append(line.strip())
+        elif cur:
+            paras.append(" ".join(cur)); cur = []
+    if cur:
+        paras.append(" ".join(cur))
+    paras = [re.sub(r"^(hi|hello|dear)\s+[\w ]{0,30}[,!]\s*", "", p, flags=re.I) for p in paras]
+    return [p for p in paras if len(p) > 25 and not re.match(r"^[\W\d\s]+$", p)]
+
+
+def split_thread(text: str) -> list[str]:
+    """Messages in the order they appear: newest first (Outlook puts replies on top)."""
+    parts, last = [], 0
+    for m in _SPLIT.finditer(text):
+        parts.append(text[last:m.start()])
+        last = m.start()
+    parts.append(text[last:])
+    return [p for p in (x.strip() for x in parts) if p]
+
+
+def _cap(text: str, n: int) -> str:
+    return text if len(text) <= n else text[:n].rsplit(" ", 1)[0] + "…"
+
+
+def summarize(text: str, subject: str = "") -> dict:
+    """Headings first (extract); anything still empty is filled from the thread itself:
+    issue from the oldest message, solution and root cause from the newest messages that talk about a fix."""
+    got = extract(text, subject)
+    msgs = [_paragraphs(m) for m in split_thread(text or "")]
+    msgs = [m for m in msgs if m]
+    if not msgs:
+        return got
+    if not got["issue"]:
+        oldest = msgs[-1]
+        got["issue"] = _cap("\n\n".join(oldest[:3]), 900)
+    if not got["solution"]:
+        picked = []
+        for m in msgs[:-1] or msgs:  # newest to older; the original question rarely holds the fix
+            picked += [p for p in m if _SOLVED.search(p) and p not in picked]
+            if len(picked) >= 3:
+                break
+        if not picked and len(msgs) > 1:
+            picked = msgs[0][:2]
+        got["solution"] = _cap("\n\n".join(picked[:4]), 1400)
+    if not got["root_cause"]:
+        cause = next((p for m in msgs for p in m if _CAUSE.search(p) and p not in got["solution"]), "")
+        got["root_cause"] = _cap(cause, 600)
+    if not got["title"]:
+        got["title"] = _cap(got["issue"].split("\n")[0], 160)
+    return got
