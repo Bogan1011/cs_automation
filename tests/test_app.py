@@ -491,13 +491,13 @@ def test_support_cases_from_emails(monkeypatch):
         monkeypatch.setattr(settings, k, v)
     abc = make_client("ABC - Alpha Beta Corp")
     mails = [
-        {"subject": "Case TM-04118708 created: [ABC] System compatibility error in RHEL XDR Sensor",
+        {"subject": "Case TM-04000005 created: [ABC] System compatibility error in RHEL XDR Sensor",
          "receivedDateTime": "2026-11-10T05:00:00Z", "from": {"emailAddress": {"name": "Trend Micro Support", "address": "support@trendmicro.com"}},
          "bodyPreview": "Thank you for contacting us.", "webLink": "https://outlook/1"},
-        {"subject": "RE: TM-04118708 [ABC] System compatibility error in RHEL XDR Sensor",
+        {"subject": "RE: TM-04000005 [ABC] System compatibility error in RHEL XDR Sensor",
          "receivedDateTime": "2026-11-12T05:00:00Z", "from": {"emailAddress": {"name": "Trend Micro Support", "address": "support@trendmicro.com"}},
          "bodyPreview": "Your case status has been changed to Waiting for Customer Verification. Please confirm.", "webLink": "https://outlook/2"},
-        {"subject": "TM-04032776 [ABC] AMSP service not starting", "receivedDateTime": "2026-11-11T05:00:00Z",
+        {"subject": "TM-04000004 [ABC] AMSP service not starting", "receivedDateTime": "2026-11-11T05:00:00Z",
          "from": {"emailAddress": {"address": "support@trendmicro.com"}}, "bodyPreview": "This case is now Resolved.", "webLink": ""},
         {"subject": "Lunch on Friday?", "receivedDateTime": "2026-11-11T06:00:00Z", "from": {"emailAddress": {"address": "a@b.c"}}},
         {"subject": "TM-04000001 [XYZ] Something else", "receivedDateTime": "2026-11-11T07:00:00Z", "from": {"emailAddress": {"address": "support@trendmicro.com"}}},
@@ -514,18 +514,18 @@ def test_support_cases_from_emails(monkeypatch):
     r = cases.sync_cases(transport=httpx.MockTransport(handler))
     assert r == {"ok": True, "emails": 4}
     with SessionLocal() as s:
-        a = s.get(SupportCase, "TM-04118708")
+        a = s.get(SupportCase, "TM-04000005")
         assert (a.client_id, a.status, a.emails, a.last_link) == (abc, "Waiting for Customer Verification", 2, "https://outlook/2")
         assert a.subject.startswith("[ABC] System compatibility")
-        assert s.get(SupportCase, "TM-04032776").status == "Resolved"
+        assert s.get(SupportCase, "TM-04000004").status == "Resolved"
         assert s.get(SupportCase, "TM-04000001").client_id is None  # no client with tag XYZ yet
     assert cases.sync_cases(transport=httpx.MockTransport(handler))["emails"] == 0  # watermark: nothing re-counted
     with TestClient(app) as http:
         http.post("/login", data={"username": "admin", "password": "pw"})
         assert ">1</b>" in http.get(f"/clients/{abc}").text.split("Support cases")[1][:40]
         page = http.get(f"/clients/{abc}/cases").text
-        assert "TM-04118708" in page and "Waiting for Customer Verification" in page and "TM-04032776" not in page
-        assert "TM-04032776" in http.get(f"/clients/{abc}/cases?tab=closed").text
+        assert "TM-04000005" in page and "Waiting for Customer Verification" in page and "TM-04000004" not in page
+        assert "TM-04000004" in http.get(f"/clients/{abc}/cases?tab=closed").text
         other = make_client("Acme Corp")
         http.post(f"/clients/{other}/cases/tags", data={"tags": "[XYZ]"})
         assert "TM-04000001" in http.get(f"/clients/{other}/cases").text
