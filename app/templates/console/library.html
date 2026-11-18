@@ -8,8 +8,12 @@
 </div>
 <form class="search wide" method="get"><input name="q" value="{{ q }}" placeholder="Search issue, solution, error text, case no. or client…" autofocus>
   <select name="product" onchange="this.form.submit()"><option value="">All products</option>{% for k, v in PRODUCTS.items() %}<option value="{{ k }}" {{ 'selected' if k == product }}>{{ v }} ({{ counts.get(k, 0) }})</option>{% endfor %}</select>
-  <select name="client" onchange="this.form.submit()"><option value="">All clients</option>{% for c in clients %}<option {{ 'selected' if c == client }}>{{ c }}</option>{% endfor %}</select>
+  {% if client %}<input type="hidden" name="client" value="{{ client }}">{% endif %}
 </form>
+<nav class="stabs clients">
+  <a href="?q={{ q }}&product={{ product }}" class="{{ 'on' if not client }}">All clients <b>{{ total }}</b></a>
+  {% for name, n in by_client %}<a href="?q={{ q }}&product={{ product }}&client={{ name | urlencode }}" class="{{ 'on' if client == name }}">{{ name or 'No client' }} <b>{{ n }}</b></a>{% endfor %}
+</nav>
 <div class="kbgrid">
 {% for c in rows %}
   <a class="card kb" href="/library/{{ c.id }}">

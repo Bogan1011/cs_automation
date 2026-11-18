@@ -42,7 +42,7 @@
   <label>Closed on<input type="date" name="closed_on" value="{{ c.closed_on }}"></label>
   <label class="span2 hl issue"><em>Issue</em><textarea name="issue" rows="5" placeholder="What the client saw: symptoms, error messages, affected machines">{{ c.issue }}</textarea></label>
   <label class="span2">Root cause <span class="muted">(optional)</span><textarea name="root_cause" rows="3">{{ c.root_cause }}</textarea></label>
-  <label class="span2 hl solution"><em>Solution</em><textarea name="solution" rows="6" placeholder="Exactly what fixed it, step by step">{{ c.solution }}</textarea></label>
+  <label class="span2 hl solution"><em>Solution</em><textarea name="solution" rows="16" placeholder="Exactly what fixed it, step by step">{{ c.solution }}</textarea></label>
   <div class="span2"><button type="submit">Save to the library</button></div>
 </form>
 <datalist id="clients">{% for x in clients %}<option value="{{ x }}">{% endfor %}</datalist>

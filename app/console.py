@@ -218,8 +218,11 @@ def library(request: Request, q: str = "", product: str = "", client: str = ""):
                                   KnowledgeCase.case_no.ilike(like), KnowledgeCase.client.ilike(like)))
         rows = s.scalars(stmt.order_by(KnowledgeCase.closed_on.desc().nullslast(), KnowledgeCase.created_at.desc())).all()
         counts = dict(s.execute(select(KnowledgeCase.product, func.count()).group_by(KnowledgeCase.product)).all())
+        by_client = s.execute(select(KnowledgeCase.client, func.count()).group_by(KnowledgeCase.client)
+                              .order_by(KnowledgeCase.client)).all()
         return _render(request, "console/library.html", {"rows": rows, "q": q, "product": product, "client": client,
-                                                          "counts": counts, "clients": _clients(s)})
+                                                          "counts": counts, "clients": _clients(s), "by_client": by_client,
+                                                          "total": sum(n for _, n in by_client)})
 
 
 def _blank_case() -> dict:
@@ -262,9 +265,14 @@ async def library_read_email(request: Request, raw_email: str = Form(""), subjec
         c.update({k: v for k, v in got.items() if v})
     if upload and upload.get("date"):
         c["closed_on"] = upload["date"].date().isoformat()
-    c.update(raw_email=raw_email, client=client)
+    c.pop("client_tag", None)
     with SessionLocal() as s:
-        return _render(request, "console/library_form.html", {"c": c, "edit_id": None, "clients": _clients(s),
+        known = _clients(s)
+        tag = (got or {}).get("client_tag", "")
+        if not client and tag:  # [IFL] in the subject -> the existing client "IFL" (or "IFL - ...") else "IFL"
+            client = next((k for k in known if k.lower() == tag.lower() or k.lower().startswith(tag.lower() + " ")), tag)
+        c.update(raw_email=raw_email, client=client)
+        return _render(request, "console/library_form.html", {"c": c, "edit_id": None, "clients": known,
                                                                "read": got, "from_work": 0, "error": error,
                                                                "filename": mail.filename if mail else ""})
 

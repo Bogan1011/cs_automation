@@ -241,3 +241,82 @@ def test_outlook_msg_streams_are_read(monkeypatch):
     out = mailfile.read_upload("case.msg", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\0" * 64)
     assert out["subject"] == "RE: TM-04032776 ntrtscan not starting"
     assert "critical patch 14.0.13140" in out["body"] and out["date"].date().isoformat() == "2026-11-17"
+
+
+TREND_THREAD = """CAUTION: This email originated from outside of the organisation. Do not click links or open attachments unless you recognize the sender and know the content is safe.
+
+Hello Team,
+
+Thank you for your patience, and apologies for the delay. Below is the guidance on the server upgrade and the agent upgrade.
+
+1. Server upgrade (1.0 to 2.0)
+
+The server must be upgraded before any agents, because 2.0 agents cannot communicate with a 1.0 server.
+
+*\tTake a full backup of the database before the upgrade.
+
+2. Agent upgrade
+
+A direct upgrade from agent 1.0 to 2.0 is not supported. The only supported method is to remove the existing agent and install the new version.
+
+*\tGuide: https://docs.example.com/upgrade <https://docs.example.com/upgrade>
+
+Thank you and stay safe.
+
+Regards,
+Support Engineer
++00 000 0000
+
+------------------- Original Message -------------------
+From: Engineer <eng@example.com>;
+Subject: RE: TrendAI™ Technical Support Case TM-04000002 P2 : [ABC] Upgrade guidance CRM:110300000002
+
+Hello team,
+
+Please update on the case.
+
+Thanks & Regards,
+Engineer
+
+From: Trend Micro TS Cases <cases@example.com>
+Sent: Tuesday, November 3, 2026 4:51 PM
+Subject: TrendAI™ Technical Support Case TM-04000002 P2 : [ABC] Upgrade guidance CRM:110300000002
+
+** This is a system generated email from our case tracking system***
+
+Please do not change the email subject when replying to this message.
+
+Dear Customer,
+
+Thank you for contacting TrendAI™ Technical Support.
+
+Case: TM-04000002 [ABC] Upgrade guidance
+
+Product: Endpoint Encryption
+
+We are reviewing your submission and will contact you soon.
+
+The information contained in this electronic message and any attachments are intended for the exclusive use of the addressee(s).
+"""
+
+
+def test_trend_case_thread_title_client_issue_solution():
+    subject = "RE: TrendAI™ Technical Support Case TM-04000002 P2 : [ABC] Upgrade guidance\xa0CRM:110300000002"
+    got = kb.summarize(TREND_THREAD, subject)
+    assert got["title"] == "[ABC] Upgrade guidance" and got["client_tag"] == "ABC" and got["case_no"] == "TM-04000002"
+    assert got["product"] == "endpoint-encryption"
+    for junk in ("system generated", "do not change the email subject", "CAUTION", "Please update on the case", "Regards"):
+        assert junk.lower() not in (got["issue"] + got["solution"]).lower(), junk
+    assert got["issue"].startswith("Upgrade guidance (Endpoint Encryption)") and "Below is the guidance" in got["issue"]
+    assert got["solution"].startswith("In short:\n• The server must be upgraded before any agents")
+    assert "A direct upgrade from agent 1.0 to 2.0 is not supported." in got["solution"]
+    assert "• Take a full backup" in got["solution"] and "<https://" not in got["solution"]
+    with TestClient(app) as http:
+        login(http)
+        for _ in range(2):
+            page = http.post("/library/read-email", data={"raw_email": TREND_THREAD, "subject": subject}).text
+            assert 'name="client" list="clients" value="ABC"' in page
+            http.post("/library", data={"title": got["title"], "client": "ABC", "product": got["product"],
+                                        "issue": got["issue"], "solution": got["solution"]})
+        lib = http.get("/library").text
+        assert "ABC <b>2</b>" in lib
