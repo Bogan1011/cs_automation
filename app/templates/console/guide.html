@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% from "console/_m.html" import prod, icon with context %}
+{% block title %}{{ g.title }} · Troubleshooting{% endblock %}
+{% block content %}
+<div class="bar head">
+  <div><a href="/troubleshooting?product={{ g.product }}" class="back">‹ Troubleshooting</a><h1 class="wtitle">{{ g.title }}</h1>
+    <p class="wmeta">{{ prod(g.product) }}<span class="os-chip">{{ g.os }}</span><span class="muted">{{ g.category }}</span></p></div>
+  <div class="actions"><button class="ghost" type="button" onclick="window.print()">Print</button></div>
+</div>
+<div class="callout note top-note">Written from Trend documentation. Check the steps against the latest Trend article for the client's agent version before you run them on a production machine.</div>
+<div class="guide-wrap">
+  <aside class="guide-side">
+    {% if toc %}<div class="card gs-box"><em>On this page</em>{% for a, t in toc %}<a href="#{{ a }}">{{ t }}</a>{% endfor %}</div>{% endif %}
+    {% if scripts %}<div class="card gs-box"><em>Scripts for this</em>{% for s in scripts %}<a href="/scripts/{{ s.product }}/{{ s.name }}">{{ icon('win' if s.platform == 'Windows' else 'linux', 13) }} {{ s.name }}</a>{% endfor %}</div>{% endif %}
+    {% if more %}<div class="card gs-box"><em>More {{ PRODUCTS[g.product] }} guides</em>{% for x in more %}<a href="/troubleshooting/{{ x.product }}/{{ x.slug }}">{{ x.title }}</a>{% endfor %}</div>{% endif %}
+  </aside>
+  <article class="card guide">{{ body | safe }}</article>
+</div>
+{% endblock %}
+{% block scripts %}<script>
+document.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', () => {
+  navigator.clipboard.writeText(b.parentElement.querySelector('code').innerText).then(() => toast('Copied', 1500));
+}));
+</script>{% endblock %}

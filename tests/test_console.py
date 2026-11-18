@@ -428,3 +428,26 @@ def test_full_mail_trail_keeps_every_message():
         pop = http.get(f"/library/{cid}/mail").text
         assert "Full mail trail" in pop and "Trend support" in pop and pop.count('class="mail m-') == len(msgs)
         assert http.get("/library/999/mail").status_code == 404
+
+
+def test_troubleshooting_guides_list_search_and_render():
+    from app import guides
+    every = guides.all_guides()
+    assert {g["product"] for g in every} == {"deep-security", "apex-one", "xdr"}
+    for g in every:  # every guide has a header, renders, and only links scripts that exist
+        assert g["title"] and g["summary"] and g["category"] in guides.CATEGORY_ORDER
+        body, toc = guides.render(g["body"])
+        assert toc and "<script" not in body
+        names = {s["name"] for s in __import__("app.console", fromlist=["list_scripts"]).list_scripts(g["product"])}
+        assert set(g["scripts"]) <= names, g["slug"]
+    html, _ = guides.render("Use `<b>x</b>` and **bold** <img src=x onerror=alert(1)>\n\n```\nrm -rf <dir>\n```")
+    assert "&lt;img" in html and "<img" not in html and "&lt;dir&gt;" in html and "<b>bold</b>" in html
+    with TestClient(app) as http:
+        login(http)
+        page = http.get("/troubleshooting?q=force+uninstall").text
+        assert "Force uninstall the Deep Security Agent on Windows" in page and "Collect Apex One" not in page
+        assert "Apex One" in http.get("/troubleshooting?product=apex-one").text
+        g = http.get("/troubleshooting/deep-security/force-uninstall-windows").text
+        assert "dsa_control.cmd -r" in g and "On this page" in g and "ds-agent-health-windows.ps1" in g
+        assert http.get("/troubleshooting/deep-security/..%2Fsecret").status_code == 404
+        assert http.get("/troubleshooting/nope/x").status_code == 404

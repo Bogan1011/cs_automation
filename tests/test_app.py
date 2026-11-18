@@ -284,7 +284,7 @@ def test_home_page_and_inventory_counts():
         http.post("/login", data={"username": "admin", "password": "pw"})
         home = http.get("/vision-one")
         assert home.status_code == 200 and "<h3>SEP compliance</h3>" in home.text and "Needs attention" in home.text and f'href="/clients/{a}"' in home.text
-        assert ">Home</a>" in http.get(f"/clients/{a}").text  # header nav on client pages
+        assert "<span>Home</span></a>" in http.get(f"/clients/{a}").text  # header nav on client pages
     with SessionLocal() as s:
         eps = s.scalars(select(Endpoint).where(Endpoint.client_id == a)).all()
         inv = collector.inventory(eps, {"unmanaged": 4})

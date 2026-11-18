@@ -1,8 +1,6 @@
 {% extends "base.html" %}
 {% block backdrop %}
-<video class="bg-media" autoplay muted loop playsinline poster="/static/bg/poster.jpg" aria-hidden="true">
-  <source src="/static/bg/background.mp4" type="video/mp4">
-</video>
+<img class="bg-media" src="/static/bg/poster.jpg" alt="" aria-hidden="true">
 <div class="bg-shade" aria-hidden="true"></div>
 {% endblock %}
 {% block content %}
@@ -18,5 +16,4 @@
 {% endblock %}
 {% block scripts %}<script>
 document.documentElement.classList.add('has-video');
-if (matchMedia('(prefers-reduced-motion: reduce)').matches) document.querySelector('.bg-media')?.pause();
 </script>{% endblock %}

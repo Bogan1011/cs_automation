@@ -11,7 +11,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from sqlalchemy import func, or_, select
 
-from . import articles, kb, mailfile
+from . import articles, guides, kb, mailfile
 from .config import settings
 from .db import KnowledgeCase, SessionLocal, ToolLink, TrendArticle, WorkItem, WorkUpdate, utcnow
 
@@ -99,6 +99,35 @@ def script_raw(request: Request, product: str, name: str, download: int = 0):
     p = _script_path(product, name)
     headers = {"Content-Disposition": f'attachment; filename="{p.name}"'} if download else {}
     return PlainTextResponse(p.read_text(encoding="utf-8"), headers=headers)
+
+
+# ---------- troubleshooting guides ----------
+
+@router.get("/troubleshooting", response_class=HTMLResponse)
+def guides_page(request: Request, product: str = "", q: str = ""):
+    _user(request)
+    product = product if product in SCRIPT_PRODUCTS else ""
+    every = guides.all_guides()
+    counts = {k: sum(1 for g in every if g["product"] == k) for k in SCRIPT_PRODUCTS}
+    shown = guides.search([g for g in every if not product or g["product"] == product], q)
+    cats = []
+    for g in shown:
+        if g["category"] not in cats:
+            cats.append(g["category"])
+    return _render(request, "console/guides.html", {"guides": shown, "cats": cats, "product": product, "q": q,
+                                                    "counts": counts, "total": len(every), "SCRIPT_PRODUCTS": SCRIPT_PRODUCTS})
+
+
+@router.get("/troubleshooting/{product}/{name}", response_class=HTMLResponse)
+def guide_page(request: Request, product: str, name: str):
+    _user(request)
+    g = guides.get(product, name)
+    if not g:
+        raise HTTPException(404)
+    body, toc = guides.render(g["body"])
+    scripts = [s for s in list_scripts(product) if s["name"] in g["scripts"]]
+    more = [x for x in guides.all_guides() if x["product"] == product and x["slug"] != name]
+    return _render(request, "console/guide.html", {"g": g, "body": body, "toc": toc, "scripts": scripts, "more": more})
 
 
 # ---------- work board ----------

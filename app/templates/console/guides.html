@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "console/_m.html" import prod, icon with context %}
+{% block title %}Troubleshooting · CS Console{% endblock %}
+{% block content %}
+<div class="bar head">
+  <div><h1>Troubleshooting</h1><p class="muted small">Step-by-step guides for the jobs we do most: force uninstall, diagnostic logs, agents offline. Each guide links the scripts that go with it.</p></div>
+  <div class="actions"><a class="button ghost" href="/scripts">{{ icon('code', 15) }} All scripts</a></div>
+</div>
+<form class="filters" method="get">
+  <input name="q" value="{{ q }}" placeholder="Search guides, e.g. uninstall, diag, offline, 4120…" class="fq" autofocus>
+  {% if product %}<input type="hidden" name="product" value="{{ product }}">{% endif %}
+</form>
+<nav class="stabs">
+  <a href="/troubleshooting{{ '?q=' ~ q if q }}" class="{{ 'on' if not product }}">All <b>{{ total }}</b></a>
+  {% for k, v in SCRIPT_PRODUCTS.items() %}<a href="?product={{ k }}{{ '&q=' ~ q if q }}" class="{{ 'on' if product == k }}"><i class="pdot p-{{ k }}"></i>{{ v }} <b>{{ counts[k] }}</b></a>{% endfor %}
+</nav>
+{% for cat in cats %}
+<h3 class="sub-h gcat">{{ cat }}</h3>
+<div class="glist card">
+  {% for g in guides if g.category == cat %}
+  <a class="grow" href="/troubleshooting/{{ g.product }}/{{ g.slug }}">
+    <span class="gt"><b>{{ g.title }}</b><span class="muted small">{{ g.summary }}</span></span>
+    <span class="gm">{{ prod(g.product) }}<span class="os-chip">{{ g.os }}</span></span>
+    <span class="chev-r" aria-hidden="true">›</span>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<p class="muted pad card">No guide matches “{{ q }}”. Try fewer words, or check the <a href="/library?q={{ q }}">case library</a>.</p>
+{% endfor %}
+{% endblock %}
