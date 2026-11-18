@@ -149,7 +149,8 @@ def main(argv=None):
     g.add_argument("--all", action="store_true", help="every client")
     rm.add_argument("--yes", action="store_true", help="skip the confirmation question")
     sub.add_parser("articles-check", help="show what the Trend article reader finds on each product page (no changes)")
-    sub.add_parser("articles-sync", help="read the Trend product pages now and save new articles")
+    asy = sub.add_parser("articles-sync", help="read the Trend product pages now and save new articles")
+    asy.add_argument("--read", default="30", help="how many article pages to read for their solution text (default 30)")
     sub.add_parser("forget-graph", help="delete the stored Microsoft 365 sign-in and case email sync state")
     t = sub.add_parser("test", help="check a client's key and print endpoint count")
     t.add_argument("--name", required=True)
@@ -232,7 +233,7 @@ def main(argv=None):
             print(articles.check())
         elif args.cmd == "articles-sync":
             from . import articles
-            print(f"{articles.sync()} new articles")
+            print(f"{articles.sync(max_new=int(args.read or 30), progress=print)} new articles")
         elif args.cmd == "forget-graph":
             n = s.query(SyncState).delete()
             s.commit()

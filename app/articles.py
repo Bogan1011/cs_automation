@@ -125,6 +125,18 @@ def _unjson(v: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html_unescape(v))).strip()
 
 
+def _encoded(v: str) -> bool:
+    return bool(re.search(r"%[0-9A-F]{2}|\w\+\w+\+\w", v))
+
+
+def _plain(v: str) -> str:
+    """'How+to+fix+%22Auto-reconnect%22' -> 'How to fix "Auto-reconnect"'."""
+    if _encoded(v):
+        from urllib.parse import unquote_plus
+        v = unquote_plus(v)
+    return v.strip()
+
+
 def html_unescape(v: str) -> str:
     import html as _h
     return _h.unescape(v)
@@ -192,6 +204,7 @@ def find_embedded(raw: str, base: str) -> dict[str, dict]:
         if not is_obj:
             seg = re.sub(r"<script.*?(</script>|$)", " ", seg, flags=re.S)
         titles = [(abs(m.start() - at), _unjson(m.group(2))) for m in _TITLE_KEY.finditer(seg)] if is_obj else []
+        titles = [(d + (500 if _encoded(t) else 0), _plain(t)) for d, t in titles]  # prefer a readable title
         titles = [t for t in titles if 8 <= len(t[1]) <= 300 and not _KA_ANY.fullmatch(t[1]) and not t[1].startswith("http")]
         if titles and not cur["title"]:
             cur["title"] = min(titles)[1]
@@ -206,9 +219,10 @@ def find_embedded(raw: str, base: str) -> dict[str, dict]:
         descs = [d for d in descs if len(d) > 30]
         if descs and not cur["summary"]:
             cur["summary"] = max(descs, key=len)[:600]
-        for m in _VIEW_KEY.finditer(seg):
-            n = int(m.group(2))
-            cur["views"] = max(cur["views"] or 0, n)
+        counts = [(("view" in m.group(1).lower()), int(m.group(2))) for m in _VIEW_KEY.finditer(seg)]
+        if counts:
+            pref = [n for is_view, n in counts if is_view] or [n for _, n in counts]
+            cur["views"] = max(max(pref), cur["views"] or 0)
         m = _DATE_KEY.search(seg)
         if m and not cur["date"]:
             cur["date"] = m.group(2)[:10]
@@ -315,7 +329,7 @@ def page_links(html: str, base: str, limit: int = 25) -> list[str]:
     return out[:limit]
 
 
-def sync(transport: httpx.BaseTransport | None = None, max_new: int = 30) -> int:
+def sync(transport: httpx.BaseTransport | None = None, max_new: int = 30, progress=None) -> int:
     """Look for new articles on every product page. Returns how many were added."""
     added = 0
     now = utcnow()
@@ -353,8 +367,9 @@ def sync(transport: httpx.BaseTransport | None = None, max_new: int = 30) -> int
                                        product=_product(a["title"]), sources="")
                     s.add(row)
                     added += 1
-                elif a["title"] and not row.title:
+                elif a["title"] and (not row.title or _encoded(row.title)):
                     row.title = a["title"]
+                row.title = _plain(row.title or "")[:400]
                 if key not in (row.sources or "").split():
                     row.sources = ((row.sources or "") + " " + key).strip()
                 if ka in first:
@@ -367,13 +382,17 @@ def sync(transport: httpx.BaseTransport | None = None, max_new: int = 30) -> int
                     row.published = a["date"]
                 row.last_listed = now
             s.commit()
+            if progress:
+                progress(f"{key}: {len(found)} articles listed")
         for row in s.scalars(select(TrendArticle).where(TrendArticle.fetched_at.is_not(None))):
             if is_junk(row.summary) and is_junk(row.solution):  # read again with the better parser
                 row.fetched_at = None
         s.commit()
         todo = s.scalars(select(TrendArticle).where(TrendArticle.fetched_at.is_(None))
                          .order_by(TrendArticle.ka.desc()).limit(max_new)).all()
-        for row in todo:
+        for n, row in enumerate(todo, 1):
+            if progress:
+                progress(f"reading article {n}/{len(todo)}: {row.ka}")
             try:
                 r = http.get(row.url)
                 r.raise_for_status()
