@@ -186,6 +186,8 @@ def main(argv=None):
     sc = sub.add_parser("sep-compliance", help="compare ways of counting SEP virus pattern compliance (read-only)")
     sc.add_argument("--name", required=True)
     sub.add_parser("graph-login", help="sign in to Microsoft 365 once (device code) for drafts and case emails")
+    sub.add_parser("onedrive-login", help="sign in to your OneDrive once (device code) for one-click log upload folders")
+    sub.add_parser("onedrive-logout", help="forget the stored OneDrive sign-in")
     sub.add_parser("sync-cases", help="read new Trend support case emails from the Outlook mailbox now")
     po = sub.add_parser("poll", help="run one collection now (all clients, or one with --name)")
     po.add_argument("--name", help="only this client (as shown by list-clients)")
@@ -403,6 +405,19 @@ def main(argv=None):
                 print(f"OK: {len(items)} endpoints")
             else:
                 print(json.dumps(items[0] if items else {}, indent=2))
+        elif args.cmd == "onedrive-login":
+            from .onedrive import device_login as od_login
+            print("Signed in as", od_login())
+            print("Log upload folders will be made in this account's OneDrive.")
+        elif args.cmd == "onedrive-logout":
+            from . import db as _db
+            from .onedrive import TOKEN_KEY
+            with _db.SessionLocal() as s:
+                row = s.get(_db.SyncState, TOKEN_KEY)
+                if row:
+                    s.delete(row)
+                    s.commit()
+            print("OneDrive sign-in removed.")
         elif args.cmd == "graph-login":
             from .outlook import device_login
             print("Signed in as", device_login())

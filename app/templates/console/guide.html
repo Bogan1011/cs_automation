@@ -5,7 +5,7 @@
 <div class="bar head">
   <div><a href="/troubleshooting?product={{ g.product }}" class="back">‹ Troubleshooting</a><h1 class="wtitle">{{ g.title }}</h1>
     <p class="wmeta">{{ prod(g.product) }}<span class="os-chip">{{ g.os }}</span><span class="muted">{{ g.category }}</span></p></div>
-  <div class="actions"><button class="ghost" type="button" onclick="window.print()">Print</button></div>
+  <div class="actions">{% if 'log' in g.title|lower or 'diag' in g.title|lower %}<a class="button" href="/uploads?product={{ g.product }}">Get a log upload link</a>{% endif %}<button class="ghost" type="button" onclick="window.print()">Print</button></div>
 </div>
 <div class="callout note top-note">Written from Trend documentation. Check the steps against the latest Trend article for the client's agent version before you run them on a production machine.</div>
 <div class="guide-wrap">

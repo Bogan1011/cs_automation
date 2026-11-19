@@ -579,3 +579,58 @@ def test_scripts_grouped_and_quick_search():
         assert hits and hits[0]["url"].startswith("/library")
         assert http.get("/find?q=scripts").json()[0]["url"] == "/scripts"
         assert http.get("/find?q=").json()
+
+
+def test_one_click_onedrive_log_folder(monkeypatch):
+    from app import onedrive
+    from app.db import LogFolder
+    monkeypatch.setattr(settings, "graph_tenant_id", "t")
+    monkeypatch.setattr(settings, "graph_client_id", "c")
+    monkeypatch.setattr(settings, "onedrive_root", "Client logs")
+    seen, made = [], {}
+
+    def handler(req: httpx.Request):
+        seen.append((req.method, req.url.path))
+        if req.url.path.endswith("/token"):
+            return httpx.Response(200, json={"access_token": "A", "refresh_token": "R2"})
+        if req.method == "GET" and "/root:/" in req.url.raw_path.decode():
+            path = req.url.raw_path.decode().split("/root:/")[1]
+            return httpx.Response(200, json=made[path]) if path in made else httpx.Response(404)
+        if req.method == "POST" and req.url.path.endswith("/children"):
+            from urllib.parse import quote
+            name = __import__("json").loads(req.content)["name"]
+            pid = req.url.path.split("/items/")[1].split("/")[0] if "/items/" in req.url.path else ""
+            parent = next((k for k, v in made.items() if v["id"] == pid), "")
+            item = {"id": f"id{len(made)}", "name": name, "webUrl": f"https://od/{name}"}
+            made[(parent + "/" if parent else "") + quote(name)] = item
+            return httpx.Response(201, json=item)
+        if req.url.path.endswith("/createLink"):
+            body = __import__("json").loads(req.content)
+            if body["type"] == "createOnly":
+                return httpx.Response(200, json={"link": {"webUrl": "https://od/upload-only"}})
+        return httpx.Response(500)
+
+    real = onedrive.create_log_folder
+    monkeypatch.setattr(onedrive, "create_log_folder",
+                        lambda *a, **k: real(*a, transport=httpx.MockTransport(handler), **k))
+    assert onedrive.folder_path("ABC", "10.1.1.1", "TM-04000009")[1:] == ["ABC", onedrive.folder_path("x", "")[2] + " 10.1.1.1 TM-04000009"]
+    assert onedrive._safe('a:b*c?/d') == "a-b-c-d"
+    with TestClient(app) as http:
+        login(http)
+        page = http.get("/uploads").text
+        assert "isn't connected yet" in page
+        onedrive._store("R1")
+        r = http.post("/uploads", data={"client": "ABC", "host": "10.1.1.1", "trend_case": "TM-04000009"}, follow_redirects=False)
+        assert r.status_code == 303 and "made=" in r.headers["location"], r.headers["location"]
+        page = http.get(r.headers["location"]).text
+        assert "https://od/upload-only" in page and "Upload only" in page and "10.1.1.1" in page
+        assert "Please upload the diagnostic logs from 10.1.1.1 for Trend case TM-04000009" in page
+        assert len([m for m in seen if m[1].endswith("/children")]) == 3
+        # same folder again: no new folders, still one link
+        http.post("/uploads", data={"client": "ABC", "host": "10.1.1.1", "trend_case": "TM-04000009"})
+        assert len([m for m in seen if m[1].endswith("/children")]) == 3
+        with SessionLocal() as s:
+            assert s.query(LogFolder).count() == 2
+        assert onedrive._stored() == "R2"                       # rotated refresh token kept
+        bad = http.post("/uploads", data={"client": "", "host": "x"}, follow_redirects=False)
+        assert "err=" in bad.headers["location"]

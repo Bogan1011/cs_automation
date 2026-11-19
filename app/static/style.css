@@ -1326,3 +1326,16 @@ button.side-fold:hover{color:var(--fg)!important;background:color-mix(in srgb,va
 }
 @media (max-width:900px){.side-fold{display:none}}
 .side-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+/* log uploads */
+.upl-form .ql-top{grid-template-columns:1.2fr 1.4fr 1fr 1fr auto}
+.upl-setup,.upl-done,.upl-err{margin-bottom:14px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.upl-err{border-color:color-mix(in srgb,var(--bad) 45%,transparent);color:var(--bad)}
+.upl-done{border-color:color-mix(in srgb,var(--ok) 45%,transparent)}
+.upl-link{display:flex;gap:8px;width:100%}
+.upl-link input{flex:1;min-width:0;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg-2);color:var(--fg);font-size:13px}
+.upl-msg{width:100%}.upl-msg summary{cursor:pointer;font-weight:600;font-size:13px;color:var(--muted)}
+.upl-msg textarea{width:100%;margin:8px 0;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg-2);color:var(--fg);font:inherit;font-size:13px}
+.upl-warn{color:var(--warn)}
+.upl-acts{display:flex;gap:6px;justify-content:flex-end}
+.button.sm,button.sm{padding:5px 10px;font-size:12px}
+@media (max-width:900px){.upl-form .ql-top{grid-template-columns:1fr}}

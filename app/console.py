@@ -11,9 +11,9 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from sqlalchemy import func, or_, select
 
-from . import articles, guides, kb, mailfile, users
+from . import articles, guides, kb, mailfile, onedrive, users
 from .config import settings
-from .db import DailyEntry, KnowledgeCase, SessionLocal, ToolLink, TrendArticle, WorkItem, WorkUpdate, utcnow
+from .db import DailyEntry, KnowledgeCase, LogFolder, SessionLocal, ToolLink, TrendArticle, WorkItem, WorkUpdate, utcnow
 
 router = APIRouter()
 ROOT = Path(__file__).resolve().parent.parent / "troubleshooting"
@@ -184,6 +184,43 @@ def guide_page(request: Request, product: str, name: str):
                                                    "tools": tools})
 
 
+# ---------- log upload folders (OneDrive) ----------
+
+@router.get("/uploads", response_class=HTMLResponse)
+def uploads_page(request: Request, made: int = 0, err: str = "", product: str = ""):
+    _user(request)
+    with SessionLocal() as s:
+        rows = s.scalars(select(LogFolder).order_by(LogFolder.at.desc()).limit(50)).all()
+        new = s.get(LogFolder, made) if made else None
+        clients = sorted(set(_clients(s)) | {r.client for r in rows if r.client})
+    msg = onedrive.message(new.client, new.host, new.upload_url or new.folder_url, new.trend_case) if new else ""
+    return _render(request, "console/uploads.html", {
+        "rows": rows, "new": new, "msg": msg, "err": err[:300], "clients": clients, "product": product,
+        "connected": onedrive.connected(), "app_ready": onedrive.app_ready(), "root": settings.onedrive_root,
+        "tz": _local_tz()})
+
+
+@router.post("/uploads")
+def uploads_create(request: Request, client: str = Form(""), host: str = Form(""), trend_case: str = Form(""),
+                   product: str = Form("other")):
+    from urllib.parse import quote
+    me = _user(request)
+    client, host, trend_case = client.strip()[:120], host.strip()[:200], trend_case.strip()[:40]
+    if not client or not host:
+        return RedirectResponse("/uploads?err=" + quote("Fill in the client and the server"), status_code=303)
+    try:
+        r = onedrive.create_log_folder(client, host, trend_case)
+    except Exception as e:  # not connected, expired sign-in or a OneDrive error: show it on the page
+        return RedirectResponse("/uploads?err=" + quote(str(e)[:300]), status_code=303)
+    with SessionLocal() as s:
+        row = LogFolder(author=me, client=client, host=host, trend_case=trend_case,
+                        product=product if product in PRODUCTS else "other", **r)
+        s.add(row)
+        s.commit()
+        rid = row.id
+    return RedirectResponse(f"/uploads?made={rid}", status_code=303)
+
+
 # ---------- work board ----------
 
 def _clients(s) -> list[str]:
@@ -196,7 +233,8 @@ def _clients(s) -> list[str]:
 PAGES = [("Home", "/", "Page"), ("Daily log", "/log", "Page"), ("Open issues", "/work", "Page"),
          ("New work item", "/work#new", "Action"), ("Case library", "/library", "Page"),
          ("Add finished case", "/library/new", "Action"), ("Troubleshooting guides", "/troubleshooting", "Page"),
-         ("Scripts", "/scripts", "Page"), ("Trend articles", "/articles", "Page"), ("Tools", "/tools", "Page")]
+         ("Scripts", "/scripts", "Page"), ("Trend articles", "/articles", "Page"), ("Tools", "/tools", "Page"),
+         ("Log upload link (OneDrive)", "/uploads", "Action")]
 
 
 @router.get("/find")

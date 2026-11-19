@@ -146,6 +146,22 @@ class DailyEntry(Base):
     trend_case: Mapped[str] = mapped_column(String(40), default="")
 
 
+class LogFolder(Base):
+    """A OneDrive folder made for one client's diagnostic logs, with the upload-only link sent to the client."""
+    __tablename__ = "log_folders"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    author: Mapped[str] = mapped_column(String(80), default="")
+    client: Mapped[str] = mapped_column(String(120), default="")
+    host: Mapped[str] = mapped_column(String(200), default="")
+    product: Mapped[str] = mapped_column(String(30), default="other")
+    trend_case: Mapped[str] = mapped_column(String(40), default="")
+    path: Mapped[str] = mapped_column(Text, default="")
+    folder_url: Mapped[str] = mapped_column(Text, default="")
+    upload_url: Mapped[str] = mapped_column(Text, default="")
+    link_kind: Mapped[str] = mapped_column(String(30), default="")
+
+
 class WorkItem(Base):
     """An issue someone in the team is working on, so whoever picks it up knows where it stands."""
     __tablename__ = "work_items"
