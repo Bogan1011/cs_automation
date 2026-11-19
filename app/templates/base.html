@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0B1325">
+<meta name="theme-color" content="#1C2330">
 <link rel="icon" href="/static/brand/favicon.ico">
 <title>{% block title %}CS Console{% endblock %}</title>
-<script>(function(){var t=null;try{t=localStorage.getItem('theme3')}catch(e){}if(t!=='gold'&&t!=='gold-light'){t=matchMedia('(prefers-color-scheme: light)').matches?'gold-light':'gold'}if(location.pathname==='/login'){t='gold'}document.documentElement.dataset.theme=t})()</script>
+<script>(function(){var t=null;try{t=localStorage.getItem('theme3')}catch(e){}if(t!=='gold'&&t!=='gold-light'){t=matchMedia('(prefers-color-scheme: light)').matches?'gold-light':'gold'}if(location.pathname==='/login'){t='gold'}var d=document.documentElement;d.dataset.theme=t;var p=null,m=null;try{p=localStorage.getItem('palette');m=localStorage.getItem('side')}catch(e){}if(['slate','sage','ocean','sand'].indexOf(p)<0){p='slate'}d.dataset.palette=p;if(m==='min'){d.dataset.side='min'}})()</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="/static/style.css?v={{ asset_v }}">
@@ -18,10 +18,13 @@
 {% if signed_in %}
 {% set nc = nav_clients() %}{% set failed = nc | selectattr('ok', 'equalto', False) | list %}
 <aside class="side" id="side">
+  <div class="side-top">
   <a class="brand side-brand" href="/" title="Home">
     <span class="brand-logo">{% include "_logo.html" %}</span>
     <span class="brand-text"><b>CS Command Centre</b><small>Customer Success</small></span>
   </a>
+  <button type="button" class="side-fold" id="side-fold" title="Fold or open the sidebar ([)" aria-label="Fold sidebar"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg></button>
+  </div>
   {% set NAV = [
     ('/', 'Home', '<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/>'),
     ('/log', 'Work board', '<rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="11" rx="1.5"/><rect x="17" y="4" width="4" height="7" rx="1.5"/>'),
@@ -34,14 +37,16 @@
   <button type="button" class="side-search" id="open-find" title="Search everything (Ctrl+K or /)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><span>Search</span><kbd>Ctrl K</kbd></button>
   <nav class="side-nav" aria-label="Pages">
   {% for href, label, icon in NAV %}{% set here = path == href or (href != '/' and path.startswith(href)) or (href == '/log' and path.startswith('/work')) %}
-  <a href="{{ href }}" class="{{ 'on' if here }}"{% if here %} aria-current="page"{% endif %}>
+  <a href="{{ href }}" title="{{ label }}" class="{{ 'on' if here }}"{% if here %} aria-current="page"{% endif %}>
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{{ icon | safe }}</svg><span>{{ label }}</span></a>
   {% endfor %}
   {% if nc %}<a href="/vision-one" class="{{ 'on' if path == '/vision-one' or path.startswith('/clients') or path.startswith('/endpoints') }}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/></svg><span>Vision One</span></a>{% endif %}
   </nav>
   <div class="side-foot">
     {% if failed %}<span class="status-pill crit" title="{{ failed | map(attribute='name') | join(', ') }} last poll failed"><i></i>{{ failed | length }} poll failed</span>{% endif %}
-    <div class="clock" aria-label="Local time"><b id="clock-time">--:--:--</b><span id="clock-date"></span></div>
+    <div class="side-row"><div class="clock" aria-label="Local time"><b id="clock-time">--:--:--</b><span id="clock-date"></span></div>
+      <div class="pal" id="pal"><button type="button" class="pal-btn" id="pal-btn" title="Colours" aria-label="Choose colours" aria-haspopup="true"></button>
+        <div class="pal-menu" role="menu"><small>Colours</small><button type="button" data-pal="slate"><i><b style="background:#1C2330"></b><b style="background:#4FB6A8"></b><b style="background:#9BB4DA"></b></i>Slate</button><button type="button" data-pal="sage"><i><b style="background:#1B2420"></b><b style="background:#8BC49A"></b><b style="background:#E2C48A"></b></i>Sage</button><button type="button" data-pal="ocean"><i><b style="background:#18202F"></b><b style="background:#6FA8F5"></b><b style="background:#8FD3C7"></b></i>Ocean</button><button type="button" data-pal="sand"><i><b style="background:#221F1C"></b><b style="background:#E2A867"></b><b style="background:#A9C2A0"></b></i>Sand</button></div></div></div>
     <div class="side-me">
       <span class="user-pill" title="Signed in"><span class="av">{{ signed_in[:1] | upper }}</span>{{ signed_in }}</span>
       <button class="theme-pill" id="theme" type="button" title="Switch between dark and light" aria-label="Switch theme">

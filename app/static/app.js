@@ -364,3 +364,26 @@ function startInstaller(clientName, reportTo) {
   res.addEventListener('click', e => { if (e.target.closest('.fitem')) setTimeout(() => dlg.close(), 0); });
   dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
 })();
+
+// Colour palette picker and foldable sidebar (both remembered in this browser)
+(() => {
+  const root = document.documentElement, pal = document.getElementById('pal');
+  const mark = () => pal?.querySelectorAll('[data-pal]').forEach(b => b.classList.toggle('on', b.dataset.pal === root.dataset.palette));
+  document.getElementById('pal-btn')?.addEventListener('click', e => { e.stopPropagation(); pal.classList.toggle('open'); mark(); });
+  pal?.querySelectorAll('[data-pal]').forEach(b => b.addEventListener('click', () => {
+    root.dataset.palette = b.dataset.pal; try { localStorage.setItem('palette', b.dataset.pal); } catch (e) {}
+    mark(); pal.classList.remove('open');
+  }));
+  document.addEventListener('click', e => { if (pal && !pal.contains(e.target)) pal.classList.remove('open'); });
+  const fold = () => {
+    const min = root.dataset.side !== 'min';
+    if (min) root.dataset.side = 'min'; else delete root.dataset.side;
+    try { localStorage.setItem('side', min ? 'min' : 'full'); } catch (e) {}
+  };
+  document.getElementById('side-fold')?.addEventListener('click', fold);
+  document.addEventListener('keydown', e => {
+    const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    if (e.key === '[' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); fold(); }
+    if (e.key === 'Escape') pal?.classList.remove('open');
+  });
+})();
