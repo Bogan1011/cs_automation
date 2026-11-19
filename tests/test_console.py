@@ -559,3 +559,23 @@ def test_users_with_hashed_passwords_can_sign_in():
     cli.main(["remove-user", "rutav"])
     with TestClient(app) as http:
         assert http.post("/login", data={"username": "rutav", "password": "n3w-pass-123"}).status_code == 401
+
+
+def test_scripts_grouped_and_quick_search():
+    with TestClient(app) as http:
+        assert http.get("/find?q=x", follow_redirects=False).status_code in (302, 303, 401)
+        login(http)
+        page = http.get("/scripts").text
+        assert page.count('class="srow') == 5            # Windows and Linux pairs share a row
+        with SessionLocal() as s:
+            s.add(KnowledgeCase(title="[ABC] Sensor offline after upgrade", client="ABC", product="xdr",
+                                case_no="TM-04000009", issue="Sensor offline"))
+            s.commit()
+        items = http.get("/find?q=uninstall").json()
+        groups = {i["group"] for i in items}
+        assert "Guides" in groups and all(i["url"].startswith("/") for i in items)
+        assert any("Deep Security" in i["title"] for i in items)
+        hits = http.get("/find?q=TM-04000009").json()
+        assert hits and hits[0]["url"].startswith("/library")
+        assert http.get("/find?q=scripts").json()[0]["url"] == "/scripts"
+        assert http.get("/find?q=").json()

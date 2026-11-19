@@ -31,6 +31,7 @@
     ('/articles', 'Trend articles', '<path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/>'),
     ('/tools', 'Tools', '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8V21h3.2l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/>'),
   ] %}
+  <button type="button" class="side-search" id="open-find" title="Search everything (Ctrl+K or /)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><span>Search</span><kbd>Ctrl K</kbd></button>
   <nav class="side-nav" aria-label="Pages">
   {% for href, label, icon in NAV %}{% set here = path == href or (href != '/' and path.startswith(href)) or (href == '/log' and path.startswith('/work')) %}
   <a href="{{ href }}" class="{{ 'on' if here }}"{% if here %} aria-current="page"{% endif %}>
@@ -62,6 +63,14 @@
 <main>{% block content %}{% endblock %}</main>
 </div>
 <div id="msg" role="status" aria-live="polite"></div>
+{% if signed_in %}<dialog id="finder" class="finder" aria-label="Search everything">
+  <div class="finder-in">
+    <div class="finder-q"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+      <input id="find-q" placeholder="Search guides, scripts, tools, cases, articles, log… (e.g. uninstall, KA-0025062, ABC)" autocomplete="off"><kbd>Esc</kbd></div>
+    <div id="find-res" class="finder-res" role="listbox"></div>
+    <p class="finder-help muted small">↑ ↓ to move · Enter to open · Esc to close</p>
+  </div>
+</dialog>{% endif %}
 <script src="/static/app.js?v={{ asset_v }}"></script>
 {% block scripts %}{% endblock %}
 </body>

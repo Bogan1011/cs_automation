@@ -323,3 +323,44 @@ function startInstaller(clientName, reportTo) {
       raw.textContent = showRaw ? 'By message' : 'Plain text'; }
   });
 })();
+
+// Quick search (Ctrl+K or /): jump to any guide, script, tool, case, article, issue or log entry
+(function () {
+  const dlg = document.getElementById('finder');
+  if (!dlg) return;
+  const q = document.getElementById('find-q'), res = document.getElementById('find-res');
+  let items = [], sel = 0, timer = null, seq = 0;
+  const draw = () => {
+    if (!items.length) { res.innerHTML = q.value.trim() ? '<p class="muted pad">Nothing found.</p>' : ''; return; }
+    let html = '', group = '';
+    items.forEach((it, i) => {
+      if (it.group !== group) { group = it.group; html += `<div class="fgroup">${esc(group)}</div>`; }
+      html += `<a class="fitem${i === sel ? ' on' : ''}" href="${esc(it.url)}" data-i="${i}"${/^https?:/.test(it.url) ? ' target="_blank" rel="noopener"' : ''}>`
+        + `<b>${esc(it.title)}</b><span>${esc(it.sub || '')}</span></a>`;
+    });
+    res.innerHTML = html;
+    res.querySelector('.fitem.on')?.scrollIntoView({block: 'nearest'});
+  };
+  const load = async () => {
+    const my = ++seq;
+    try {
+      const r = await fetch('/find?q=' + encodeURIComponent(q.value), {headers: {'Accept': 'application/json'}});
+      if (!r.ok || my !== seq) return;
+      items = await r.json(); sel = 0; draw();
+    } catch (e) {}
+  };
+  const open = () => { if (dlg.open) return; dlg.showModal(); q.value = ''; items = []; draw(); load(); q.focus(); };
+  document.getElementById('open-find')?.addEventListener('click', open);
+  document.addEventListener('keydown', e => {
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
+    if ((e.key === 'k' && (e.ctrlKey || e.metaKey)) || (e.key === '/' && !typing && !dlg.open)) { e.preventDefault(); open(); }
+  });
+  q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 120); });
+  q.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, items.length - 1); draw(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); draw(); }
+    else if (e.key === 'Enter' && items[sel]) { e.preventDefault(); res.querySelector(`[data-i="${sel}"]`)?.click(); dlg.close(); }
+  });
+  res.addEventListener('click', e => { if (e.target.closest('.fitem')) setTimeout(() => dlg.close(), 0); });
+  dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+})();

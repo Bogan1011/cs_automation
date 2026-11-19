@@ -55,6 +55,35 @@ def _render(request, name, ctx):
 
 # ---------- scripts ----------
 
+SCRIPT_TITLES = {"agent-health": "Agent health check", "agent-connectivity": "Agent connectivity test",
+                 "collect-diagnostics": "Collect diagnostic package", "sensor-health": "Sensor health check"}
+
+
+SCRIPT_PURPOSE = {
+    ("apex-one", "agent-connectivity"): "Agent offline or not updating: tests DNS, ports and HTTPS to the Apex One server",
+    ("apex-one", "agent-health"): "Services, server address, pattern versions, listening port and recent errors",
+    ("deep-security", "agent-health"): "Agent service, version, manager connection, recent errors and disk space",
+    ("deep-security", "collect-diagnostics"): "Runs dsa_control -d and shows where the zip for Trend is saved",
+    ("xdr", "sensor-health"): "Services, versions and the connection to your Vision One region, including TLS inspection",
+}
+
+
+def script_groups(scripts: list[dict]) -> list[dict]:
+    """Windows and Linux versions of the same check on one row."""
+    out: dict[tuple, dict] = {}
+    for sc in scripts:
+        g = out.setdefault((sc["product"], sc["core"]), {"product": sc["product"], "title": sc["title"],
+                                                          "purpose": sc["purpose"], "variants": []})
+        g["variants"].append(sc)
+        if sc["platform"] == "Windows":
+            g["purpose"] = sc["purpose"]
+    for (prod, core), g in out.items():
+        g["purpose"] = SCRIPT_PURPOSE.get((prod, core), g["purpose"])
+    for g in out.values():
+        g["variants"].sort(key=lambda v: v["platform"] != "Windows")
+        g["purpose"] = re.sub(r"\s+for (Windows|Linux)$", "", g["purpose"])
+    return list(out.values())
+
 def _script_info(path: Path) -> dict:
     text = path.read_text(encoding="utf-8", errors="replace")
     if path.suffix == ".ps1":
@@ -70,7 +99,12 @@ def _script_info(path: Path) -> dict:
         platform, run = "Linux", usage
         summary = comments[0] if comments else path.stem
         details = " ".join(c for c in comments[1:] if not c.lower().startswith(("usage", "region:", "  ")))
+    core = re.sub(r"^(ds|xdr|apex)-|-(windows|linux)$", "", path.stem)
+    core = re.sub(r"-(windows|linux)$", "", core)
+    title = SCRIPT_TITLES.get(core, core.replace("-", " ").capitalize())
+    purpose = re.sub(r"\s*\((read-only|re.*?)\)\.?$|\.$", "", summary).strip()
     return {"name": path.name, "product": path.parent.name, "platform": platform, "summary": summary,
+            "core": core, "title": title, "purpose": purpose,
             "details": details, "run": run, "size": len(text), "lines": text.count("\n") + 1}
 
 
@@ -96,9 +130,10 @@ def scripts_page(request: Request, product: str = ""):
     _user(request)
     product = product if product in SCRIPT_PRODUCTS else ""
     all_s = list_scripts()
-    counts = {k: sum(1 for s in all_s if s["product"] == k) for k in SCRIPT_PRODUCTS}
+    counts = {k: sum(1 for g in script_groups(all_s) if g["product"] == k) for k in SCRIPT_PRODUCTS}
     return _render(request, "console/scripts.html", {
         "scripts": [s for s in all_s if not product or s["product"] == product],
+        "groups": script_groups([s for s in all_s if not product or s["product"] == product]),
         "product": product, "counts": counts, "SCRIPT_PRODUCTS": SCRIPT_PRODUCTS})
 
 
@@ -154,6 +189,71 @@ def guide_page(request: Request, product: str, name: str):
 def _clients(s) -> list[str]:
     names = set(s.scalars(select(WorkItem.client).distinct())) | set(s.scalars(select(KnowledgeCase.client).distinct()))
     return sorted(n for n in names if n)
+
+
+# ---------- quick search (Ctrl+K) ----------
+
+PAGES = [("Home", "/", "Page"), ("Daily log", "/log", "Page"), ("Open issues", "/work", "Page"),
+         ("New work item", "/work#new", "Action"), ("Case library", "/library", "Page"),
+         ("Add finished case", "/library/new", "Action"), ("Troubleshooting guides", "/troubleshooting", "Page"),
+         ("Scripts", "/scripts", "Page"), ("Trend articles", "/articles", "Page"), ("Tools", "/tools", "Page")]
+
+
+@router.get("/find")
+def find(request: Request, q: str = ""):
+    from fastapi.responses import JSONResponse
+    _user(request)
+    words = [w.lower() for w in q.split() if w.strip()][:6]
+    out = []
+
+    def hit(*texts):
+        blob = " ".join(t or "" for t in texts).lower()
+        return all(w in blob for w in words)
+
+    def add(group, title, sub, url, limit):
+        if sum(1 for x in out if x["group"] == group) < limit:
+            out.append({"group": group, "title": title, "sub": sub, "url": url})
+
+    for title, url, kind in PAGES:
+        if not words or hit(title):
+            add("Go to", title, kind, url, 10 if not words else 4)
+    if not words:
+        return JSONResponse(out)
+    for g in guides.all_guides():
+        if hit(g["title"], g["summary"], g["product"], g["os"], g["category"]):
+            add("Guides", g["title"], f'{PRODUCTS.get(g["product"], "")} · {g["os"]}', f'/troubleshooting/{g["product"]}/{g["slug"]}', 6)
+    for sc in list_scripts():
+        if hit(sc["title"], sc["name"], sc["summary"], PRODUCTS.get(sc["product"], "")):
+            add("Scripts", f'{sc["title"]} ({sc["platform"]})', f'{PRODUCTS.get(sc["product"], "")} · {sc["name"]}',
+                f'/scripts/{sc["product"]}/{sc["name"]}', 6)
+    like = [f"%{w}%" for w in words]
+    with SessionLocal() as s:
+        for t in s.scalars(select(ToolLink)):
+            if hit(t.name, t.file_name, t.description, PRODUCTS.get(t.product, "")):
+                add("Tools", t.name, t.file_name or PRODUCTS.get(t.product, ""), t.url, 5)
+        st = select(KnowledgeCase)
+        for l in like:
+            st = st.where(or_(KnowledgeCase.title.ilike(l), KnowledgeCase.client.ilike(l), KnowledgeCase.case_no.ilike(l),
+                              KnowledgeCase.issue.ilike(l), KnowledgeCase.solution.ilike(l)))
+        for c in s.scalars(st.order_by(KnowledgeCase.id.desc()).limit(6)):
+            add("Cases", c.title, " · ".join(x for x in (c.client, c.case_no) if x), f"/library/{c.id}", 6)
+        st = select(TrendArticle)
+        for l in like:
+            st = st.where(or_(TrendArticle.title.ilike(l), TrendArticle.ka.ilike(l), TrendArticle.summary.ilike(l)))
+        for a in s.scalars(st.order_by(TrendArticle.ka.desc()).limit(6)):
+            add("Trend articles", articles._plain(a.title) or a.ka, f"{a.ka} · {a.kind}", a.url, 6)
+        st = select(WorkItem)
+        for l in like:
+            st = st.where(or_(WorkItem.title.ilike(l), WorkItem.client.ilike(l), WorkItem.trend_case.ilike(l)))
+        for w in s.scalars(st.order_by(WorkItem.updated_at.desc()).limit(5)):
+            add("Open issues", w.title, f"{w.client or 'No client'} · {w.status}", f"/work/{w.id}", 5)
+        st = select(DailyEntry)
+        for l in like:
+            st = st.where(or_(DailyEntry.summary.ilike(l), DailyEntry.client.ilike(l), DailyEntry.trend_case.ilike(l)))
+        for e in s.scalars(st.order_by(DailyEntry.day.desc(), DailyEntry.at.desc()).limit(5)):
+            add("Daily log", e.summary[:120], f"{e.day.strftime('%d %b')} · {e.client or '–'} · {e.author}",
+                f"/log?q={'+'.join(words)}&range=quarter", 5)
+    return JSONResponse(out)
 
 
 # ---------- daily log ----------
