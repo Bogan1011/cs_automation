@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "console/_m.html" import icon %}
+{% block title %}Log uploads · CS Console{% endblock %}
+{% block content %}
+<div class="bar head">
+  <div><h1>Log uploads</h1><p class="muted small">One click makes a folder in your OneDrive for a server's diagnostic logs and gives you a link the client can upload to, without signing in.</p></div>
+  <div class="actions"><a class="button ghost" href="/troubleshooting">Troubleshooting guides</a></div>
+</div>
+
+{% if not connected %}
+<div class="card pad upl-setup">
+  <b>OneDrive isn't connected yet.</b>
+  <p class="muted small">Sign in once with your own Microsoft account using rclone. On the server, run the line below, choose <b>n</b> (new remote), name it <code>{{ remote }}</code>, pick <b>Microsoft OneDrive</b>, press Enter for the defaults, answer <b>n</b> to "auto config", and follow the steps it prints. They ask you to run one <code>rclone authorize</code> command on your own PC and paste back what it shows. Then pick your OneDrive (Business) and confirm.</p>
+  <code class="run">docker compose exec -it app rclone config</code>
+  <p class="muted small">If Microsoft says "Need admin approval", your company doesn't let people approve apps themselves. In that case IT has to register an app for the console with <code>Files.ReadWrite</code>, then put <code>GRAPH_TENANT_ID</code> and <code>GRAPH_CLIENT_ID</code> in <code>.env</code> and run <code>python -m app.cli onedrive-login</code>.</p>
+</div>
+{% endif %}
+
+{% if err %}<div class="card pad upl-err" role="alert">{{ err }}</div>{% endif %}
+
+<form class="card quicklog upl-form" style="margin-bottom:14px" method="post" action="/uploads" autocomplete="off">
+  <div class="ql-top">
+    <input name="client" list="clientlist" required placeholder="Client, e.g. ABC" aria-label="Client" maxlength="120">
+    <input name="host" required placeholder="Server, e.g. 10.1.1.1 or APP-SRV-01" aria-label="Server or IP" maxlength="200" class="mono">
+    <input name="trend_case" placeholder="Trend case (optional)" aria-label="Trend case" maxlength="40" class="mono">
+    <select name="product" aria-label="Product">{% for k, v in PRODUCTS.items() %}<option value="{{ k }}" {{ 'selected' if k == product }}>{{ v }}</option>{% endfor %}</select>
+    <button type="submit" {{ 'disabled' if not connected }}>{{ icon('plus', 15) }} Create folder &amp; link</button>
+  </div>
+  <datalist id="clientlist">{% for c in clients %}<option value="{{ c }}">{% endfor %}</datalist>
+  <p class="muted small ql-note">Goes to <span class="mono">{{ root }}/&lt;client&gt;/&lt;date&gt; &lt;server&gt; &lt;case&gt;</span> in your OneDrive. Using the same client, server and case again on the same day reuses the folder.</p>
+</form>
+
+{% if new %}
+<div class="card pad upl-done">
+  <div class="upl-done-h"><b>Folder ready:</b> <span class="mono small">{{ new.path }}</span></div>
+  {% if new.upload_url %}
+  <div class="upl-link"><input readonly value="{{ new.upload_url }}" id="up-url" class="mono" aria-label="Upload link">
+    <button type="button" data-copy-from="up-url">Copy link</button></div>
+  <p class="muted small">{{ 'Upload only: the client can add files but cannot see or change what is already there.' if new.link_kind == 'upload only' else 'Anyone with this link can open this folder and upload files to it. It only reaches this one folder.' }}</p>
+  {% else %}
+  <p class="upl-warn small">Your organisation doesn't allow links for people outside it, so no client link was made. Open the folder and share it from OneDrive.</p>
+  {% endif %}
+  <details class="upl-msg"><summary>Message for the client</summary><textarea id="up-msg" rows="10" readonly>{{ msg }}</textarea>
+    <button type="button" class="ghost" data-copy-from="up-msg">Copy message</button></details>
+  {% if new.folder_url %}<a class="button ghost" href="{{ new.folder_url }}" target="_blank" rel="noopener">Open folder in OneDrive ↗</a>{% endif %}
+</div>
+{% endif %}
+
+<h3 class="sub-h gcat">Recent folders</h3>
+{% if rows %}
+<div class="tablewrap"><table class="upl-table">
+  <thead><tr><th>When</th><th>Client</th><th>Server</th><th>Case</th><th>By</th><th></th></tr></thead>
+  <tbody>{% for r in rows %}<tr>
+    <td class="nowrap">{{ r.at.replace(tzinfo=r.at.tzinfo or tz).astimezone(tz).strftime('%d %b %H:%M') if r.at }}</td>
+    <td>{{ r.client }}</td><td class="mono">{{ r.host }}</td><td class="mono">{{ r.trend_case or '–' }}</td><td>{{ r.author }}</td>
+    <td class="nowrap upl-acts">{% if r.upload_url %}<input type="hidden" id="u{{ r.id }}" value="{{ r.upload_url }}"><button type="button" class="ghost sm" data-copy-from="u{{ r.id }}">Copy link</button>{% endif %}
+      {% if r.folder_url %}<a class="button ghost sm" href="{{ r.folder_url }}" target="_blank" rel="noopener">Open ↗</a>{% endif %}</td>
+  </tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<div class="card pad muted">No folders yet.</div>{% endif %}
+{% endblock %}
+{% block scripts %}<script>
+// Works on plain http too, where the browser has no clipboard API
+function copyText(t) {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(t);
+  const a = document.createElement('textarea'); a.value = t; a.style.position = 'fixed'; a.style.opacity = '0';
+  document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); return Promise.resolve();
+}
+document.querySelectorAll('[data-copy-from]').forEach(b => b.addEventListener('click', () =>
+  copyText(document.getElementById(b.dataset.copyFrom).value).then(() => toast('Copied', 1500))));
+</script>{% endblock %}

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "console/_m.html" import prod, icon, worktabs with context %}
+{% block title %}Daily log · CS Console{% endblock %}
+{% block content %}
+<div class="bar head">
+  <div><h1>Work board</h1><p class="muted small">What the team did each day: every call, mail or remote session, for which client, and where it stands. The date and time are added for you.</p>{{ worktabs('log') }}</div>
+  <div class="actions"><a class="button ghost" href="/log.csv?range={{ range if range != 'today' else 'week' }}">Export CSV</a></div>
+</div>
+
+<form class="card quicklog" method="post" action="/log" autocomplete="off">
+  <div class="ql-top">
+    <select name="kind" aria-label="Type">{% for k in KINDS %}<option>{{ k }}</option>{% endfor %}</select>
+    <input name="client" list="clientlist" placeholder="Client" aria-label="Client" maxlength="120">
+    <select name="product" aria-label="Product">{% for k, v in PRODUCTS.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+    <select name="status" aria-label="Status">{% for st in LSTAT %}<option>{{ st }}</option>{% endfor %}</select>
+    <input name="trend_case" placeholder="Trend case (optional)" aria-label="Trend case" maxlength="40" class="mono">
+  </div>
+  <div class="ql-bottom">
+    <input name="summary" required maxlength="2000" placeholder="What was it? e.g. Call with ABC: DS agents offline after cert renewal, re-activated 3 servers" aria-label="What was it" autofocus>
+    <button type="submit">{{ icon('plus', 15) }} Add to today</button>
+  </div>
+  <datalist id="clientlist">{% for c in clients %}<option value="{{ c }}">{% endfor %}</datalist>
+  <p class="muted small ql-note">Logged as <b>{{ me }}</b> for today, {{ today.strftime('%a %d %b') }}. You've logged {{ mine_today }} today.</p>
+</form>
+
+<form class="filters" method="get">
+  <input name="q" value="{{ q }}" placeholder="Search what was done, client or case no.…" class="fq">
+  <label class="dd"><span>Who</span><select name="who" onchange="this.form.submit()">
+    <option value="">Everyone</option><option value="me" {{ 'selected' if who == 'me' }}>Only me</option>
+    {% for p in people %}<option value="{{ p }}" {{ 'selected' if who == p }}>{{ p }}</option>{% endfor %}</select></label>
+  <label class="dd"><span>Client</span><select name="client" onchange="this.form.submit()">
+    <option value="">All clients</option>{% for c in clients %}<option {{ 'selected' if client == c }}>{{ c }}</option>{% endfor %}</select></label>
+  <label class="dd"><span>Period</span><select name="range" onchange="this.form.submit()">
+    {% for k, label in [('today', 'Today'), ('week', 'Last 7 days'), ('month', 'Last 30 days'), ('quarter', 'Last 90 days')] %}<option value="{{ k }}" {{ 'selected' if range == k }}>{{ label }}</option>{% endfor %}</select></label>
+  {% if q or who or client or range != 'week' %}<a class="clear" href="/log">Clear</a>{% endif %}
+</form>
+
+{% for day, entries in groups %}
+<h3 class="sub-h gcat dayhead">{{ 'Today' if day == today else ('Yesterday' if (today - day).days == 1 else day.strftime('%A')) }} · {{ day.strftime('%d %b %Y') }}
+  <span class="muted small">{{ entries | length }} entr{{ 'y' if entries | length == 1 else 'ies' }}{% set by = entries | groupby('author') %} · {% for a, xs in by %}{{ a }} {{ xs | length }}{{ ', ' if not loop.last }}{% endfor %}</span></h3>
+<div class="kbrows lrows card">
+  {% for e in entries %}{% set t = (e.at if e.at.tzinfo else e.at.replace(tzinfo=utc)).astimezone(tz) %}
+  <details class="kbrow" {{ 'open' if edit == e.id }}>
+    <summary>
+      <span class="muted small mono">{{ t.strftime('%H:%M') }}</span>
+      <span><span class="lkind">{{ e.kind }}</span></span>
+      <span class="kc"><b>{{ e.client or '–' }}</b></span>
+      <span class="lsum">{{ e.summary }}</span>
+      <span>{{ prod(e.product) }}</span>
+      <span><span class="lstat ls-{{ e.status | lower | replace(' ', '-') }}">{{ e.status }}</span></span>
+      <span class="muted small">{{ e.author }}</span>
+    </summary>
+    <div class="kbbody">
+      {% if e.trend_case %}<p class="small">Trend case <b class="mono">{{ e.trend_case }}</b></p>{% endif %}
+      <form method="post" action="/log" class="form grid2 ledit">
+        <input type="hidden" name="edit_id" value="{{ e.id }}">
+        <label>Type<select name="kind">{% for k in KINDS %}<option {{ 'selected' if k == e.kind }}>{{ k }}</option>{% endfor %}</select></label>
+        <label>Status<select name="status">{% for st in LSTAT %}<option {{ 'selected' if st == e.status }}>{{ st }}</option>{% endfor %}</select></label>
+        <label>Client<input name="client" list="clientlist" value="{{ e.client }}"></label>
+        <label>Product<select name="product">{% for k, v in PRODUCTS.items() %}<option value="{{ k }}" {{ 'selected' if k == e.product }}>{{ v }}</option>{% endfor %}</select></label>
+        <label class="span2">What<textarea name="summary" rows="2">{{ e.summary }}</textarea></label>
+        <label>Trend case<input name="trend_case" value="{{ e.trend_case }}" class="mono"></label>
+        <div class="kbact"><button type="submit" class="small-btn">Save</button>
+          <button type="submit" class="ghost small-btn" formaction="/log/{{ e.id }}/delete" formnovalidate onclick="return confirm('Delete this entry?')">Delete</button></div>
+      </form>
+    </div>
+  </details>
+  {% endfor %}
+</div>
+{% else %}
+<p class="muted pad card">Nothing logged {{ 'today' if range == 'today' else 'in this period' }} yet. Add your first call above.</p>
+{% endfor %}
+{% endblock %}

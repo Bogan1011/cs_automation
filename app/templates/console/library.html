@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "console/_m.html" import prod, icon, mail_btn, mail_dialog with context %}
+{% block title %}Case library · CS Console{% endblock %}
+{% block content %}
+<div class="bar head">
+  <div><h1>Case library</h1><p class="muted small">Finished cases with the issue and the fix. Click a case to see the issue, root cause and solution.</p></div>
+  <div class="actions"><a class="button" href="/library/new">{{ icon('plus', 15) }} Add finished case</a></div>
+</div>
+
+<form class="filters" method="get" id="filters">
+  <input name="q" value="{{ q }}" placeholder="Search issue, solution, error text or case no.…" class="fq">
+  <label class="dd"><span>Client</span><select name="client" onchange="this.form.submit()">
+    <option value="">All clients ({{ total }})</option>
+    {% for name, n in by_client %}<option value="{{ name }}" {{ 'selected' if client == name and name }}>{{ name or 'No client' }} ({{ n }})</option>{% endfor %}
+  </select></label>
+  <label class="dd"><span>Product</span><select name="product" onchange="this.form.submit()">
+    <option value="">All products</option>
+    {% for k, v in PRODUCTS.items() %}{% if counts.get(k) or product == k %}<option value="{{ k }}" {{ 'selected' if k == product }}>{{ v }} ({{ counts.get(k, 0) }})</option>{% endif %}{% endfor %}
+  </select></label>
+  {% if q or client or product %}<a class="clear" href="/library">Clear</a>{% endif %}
+</form>
+
+<div class="kbrows card">
+  <div class="kbhead"><span>Case</span><span>Client</span><span>Product</span><span>Case no.</span><span>Closed</span><span></span></div>
+  {% for c in rows %}
+  <details class="kbrow" {{ 'open' if rows | length == 1 }}>
+    <summary>
+      <span class="kt"><i class="chev"></i><b>{{ c.title }}</b></span>
+      <span class="kc">{{ c.client or '–' }}</span>
+      <span>{{ prod(c.product) }}</span>
+      <span class="mono muted small">{{ c.case_no or '–' }}</span>
+      <span class="muted small nowrap">{{ c.closed_on.strftime('%d %b %Y') if c.closed_on else '–' }}</span>
+      <a class="open" href="/library/{{ c.id }}" title="Open full page">↗</a>
+    </summary>
+    <div class="kbbody">
+      <div class="hl issue"><em>Issue</em><div class="pre">{{ c.issue or '–' }}</div></div>
+      {% if c.root_cause %}<div class="hl cause"><em>Root cause</em><div class="pre">{{ c.root_cause }}</div></div>{% endif %}
+      <div class="hl solution"><em>Solution</em><div class="pre">{{ c.solution or 'Not written yet' }}</div></div>
+      <div class="kbact"><a class="button ghost small-btn" href="/library/{{ c.id }}?edit=1">Edit</a><a class="button ghost small-btn" href="/library/{{ c.id }}">Full page</a>{{ mail_btn(c) }}<span class="muted small">added by {{ c.added_by }}</span></div>
+    </div>
+  </details>
+  {% else %}
+  <p class="muted pad">{{ 'Nothing matches these filters.' if q or product or client else 'No cases yet. Add one by uploading the case mail.' }}</p>
+  {% endfor %}
+</div>
+{{ mail_dialog() }}
+{% endblock %}

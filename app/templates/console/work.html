@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% from "console/_m.html" import prod, stat, pri, when, icon, worktabs with context %}
+{% block title %}Work board · CS Console{% endblock %}
+{% block content %}
+<div class="bar head">
+  <div><h1>Work board</h1><p class="muted small">Longer issues someone owns, for which client, and where they stand. Add an update whenever something changes.</p>{{ worktabs('work', open_total) }}</div>
+  <form class="search" method="get"><input type="hidden" name="status" value="{{ status }}"><input name="q" value="{{ q }}" placeholder="Search title, client or case no."></form>
+</div>
+<nav class="stabs">
+  <a href="?status=open" class="{{ 'on' if status == 'open' }}">All open <b>{{ open_total }}</b></a>
+  {% for st in STATUSES %}<a href="?status={{ st }}" class="{{ 'on' if status == st }}"><i class="st s-{{ st | lower | replace(' ', '-') }}"></i>{{ st }} <b>{{ counts.get(st, 0) }}</b></a>{% endfor %}
+  <a href="?status=all" class="{{ 'on' if status == 'all' }}">Everything</a>
+  <a href="?status={{ status }}&owner=me" class="{{ 'on' if owner == 'me' }}">Mine</a>
+</nav>
+<div class="tablewrap list">
+<table class="compact work"><thead><tr><th></th><th>Issue</th><th>Client</th><th>Product</th><th>Status</th><th>Owner</th><th>Trend case</th><th>Updated</th></tr></thead><tbody>
+{% for i in items %}{% set u = last[i.id] %}
+<tr class="rowlink" data-href="/work/{{ i.id }}">
+  <td>{{ pri(i.priority) }}</td>
+  <td class="csub"><a href="/work/{{ i.id }}"><b>{{ i.title }}</b></a>{% if u and (u.note or u.change) %}<span class="muted">{{ u.author }}: {{ (u.note or u.change)[:140] }}</span>{% endif %}</td>
+  <td class="nowrap">{{ i.client or '–' }}</td><td>{{ prod(i.product) }}</td><td class="nowrap">{{ stat(i.status) }}</td>
+  <td class="nowrap">{{ i.owner or '–' }}</td><td class="mono nowrap">{{ i.trend_case or '–' }}</td><td class="nowrap muted">{{ when(i.updated_at) }}</td>
+</tr>
+{% else %}<tr><td colspan="8" class="muted">Nothing here.</td></tr>{% endfor %}
+</tbody></table>
+</div>
+
+<details class="card fold" id="new" {{ 'open' if not items }}>
+  <summary><span>{{ icon('plus', 15) }} New work item</span><span class="muted small">What are you working on, and for whom?</span></summary>
+  <form method="post" action="/work" class="form grid2">
+    <label class="span2">Issue<input name="title" required maxlength="300" placeholder="e.g. Apex One agents not updating patterns"></label>
+    <label>Client<input name="client" list="clients" maxlength="120" placeholder="Client name"></label>
+    <label>Product<select name="product">{% for k, v in PRODUCTS.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
+    <label>Priority<select name="priority">{% for p in PRIORITIES %}<option {{ 'selected' if p == 'P3' }}>{{ p }}</option>{% endfor %}</select></label>
+    <label>Owner<input name="owner" list="users" value="{{ me }}"></label>
+    <label>Trend case no. <span class="muted">(if raised)</span><input name="trend_case" placeholder="TM-0xxxxxxx"></label>
+    <label class="span2">Where it stands now<textarea name="note" rows="3" placeholder="What you found and what you've tried so far"></textarea></label>
+    <div class="span2"><button type="submit">Add to the board</button></div>
+  </form>
+</details>
+<datalist id="clients">{% for c in clients %}<option value="{{ c }}">{% endfor %}</datalist>
+<datalist id="users">{% for u in users %}<option value="{{ u }}">{% endfor %}</datalist>
+{% endblock %}
+{% block scripts %}<script>document.querySelectorAll('tr.rowlink').forEach(r => r.addEventListener('click', e => { if (!e.target.closest('a')) location = r.dataset.href; }));</script>{% endblock %}

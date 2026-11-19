@@ -1,0 +1,16 @@
+<header class="mail-h">
+  <div><h2>Full mail trail</h2><p class="muted small">{{ c.title }} · {{ msgs | length }} message{{ '' if msgs | length == 1 else 's' }}</p></div>
+  <div class="actions"><button type="button" class="ghost small-btn" data-mail-order>Oldest first</button><button type="button" class="ghost small-btn" data-mail-raw>Plain text</button><button type="button" class="ghost small-btn" data-mail-close aria-label="Close">✕</button></div>
+</header>
+<div class="mail-list" data-view="msgs">
+  {% for m in msgs %}
+  <article class="mail m-{{ m.kind }}">
+    <div class="mail-meta"><b>{{ m.name }}</b>{% if m.kind == 'trend' %}<span class="tag">Trend support</span>{% elif m.kind == 'team' %}<span class="tag">Our team</span>{% elif m.kind == 'client' %}<span class="tag">Client</span>{% endif %}<span class="muted small nowrap">{{ m.date }}</span></div>
+    {% if m.to or m.cc %}<div class="muted small mail-to">{% if m.to %}To: {{ m.to }}{% endif %}{% if m.cc %} · Cc: {{ m.cc }}{% endif %}</div>{% endif %}
+    <div class="pre">{{ m.body or '(empty message)' }}</div>
+  </article>
+  {% else %}
+  <p class="muted pad">No mail was saved with this case.</p>
+  {% endfor %}
+</div>
+<div class="mail-raw pre" data-view="raw" hidden>{{ c.raw_email }}</div>

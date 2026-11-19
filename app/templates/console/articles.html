@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "console/_m.html" import prod with context %}
+{% block title %}Trend articles · CS Console{% endblock %}
+{% block content %}
+<div class="bar head">
+  <div><h1>Trend articles</h1><p class="muted small">From Trend Business Success for Vision One, Endpoint &amp; Workload and Apex One SaaS, checked every {{ every_min }} minutes.{% if last %} Newest found <span class="seen" data-t="{{ last.isoformat() }}{{ '' if last.tzinfo else 'Z' }}"></span>.{% endif %} Click a row for the short version.</p></div>
+  <div class="actions"><form method="post" action="/articles/sync"><button class="ghost" type="submit">↻ Check now</button></form>
+    <a class="button ghost" href="{{ sources[0] if sources else 'https://success.trendmicro.com' }}" target="_blank" rel="noopener">Business Success ↗</a></div>
+</div>
+{% if synced %}<p class="okmsg">{{ synced }}</p>{% endif %}
+<form class="filters" method="get" id="af">
+  <input name="q" value="{{ q }}" placeholder="Search title, CVE, error text or KA number…" class="fq">
+  <label class="dd"><span>Product</span><select name="src" onchange="this.form.submit()">
+    <option value="">All products ({{ total }})</option>
+    {% for k, v in SOURCES.items() %}<option value="{{ k }}" {{ 'selected' if src == k }}>{{ v }} ({{ src_counts[k] }})</option>{% endfor %}
+  </select></label>
+  <label class="dd"><span>Type</span><select name="kind" onchange="this.form.submit()">
+    <option value="">All ({{ kinds.values() | sum }})</option>
+    {% for k, n in kinds | dictsort %}<option value="{{ k }}" {{ 'selected' if kind == k }}>{{ k }} ({{ n }})</option>{% endfor %}
+  </select></label>
+  <label class="dd"><span>Sort</span><select name="sort" onchange="this.form.submit()">
+    <option value="">Latest first</option><option value="views" {{ 'selected' if sort == 'views' }}>Most viewed</option>
+  </select></label>
+  {% if q or kind or src or sort %}<a class="clear" href="/articles">Clear</a>{% endif %}
+</form>
+{% macro arow(a) %}{% set new = a.first_seen and (a.first_seen if a.first_seen.tzinfo else a.first_seen.replace(tzinfo=week.tzinfo)) > week %}
+  {% set summ = a.summary if not junk(a.summary) else '' %}{% set sol = a.solution if not junk(a.solution) else '' %}
+  <details class="kbrow{{ ' pin' if a.pinned }}">
+    <summary>
+      <span class="kt"><i class="chev"></i><b>{{ plain(a.title) or a.ka }}</b>{% if new %}<span class="newtag">New</span>{% endif %}{% if a.ka in top %}<span class="toptag" title="{{ a.views }} views">★ Top viewed</span>{% endif %}</span>
+      <span class="srcs">{% for k in (a.sources or '').split() %}<span class="src s-{{ k }}">{{ SOURCES.get(k, k) }}</span>{% endfor %}</span>
+      <span><span class="kind k-{{ a.kind | lower | replace(' ', '-') }}">{{ a.kind }}</span></span>
+      <span class="mono muted small">{{ a.ka }}</span>
+      <span class="muted small nowrap">{{ a.published or '–' }}</span>
+      <a class="open" href="{{ a.url }}" target="_blank" rel="noopener" title="Open on Business Success">↗</a>
+    </summary>
+    <div class="kbbody">
+      {% if summ %}<div class="hl issue"><em>What it is</em><div class="pre clamp">{{ summ }}</div></div>{% endif %}
+      {% if sol %}<div class="hl solution"><em>What to do</em><div class="pre clamp">{{ sol }}</div></div>{% endif %}
+      {% if not summ and not sol %}<p class="muted small">No short version could be read from this article.</p>{% endif %}
+      <div class="kbact"><a class="button ghost small-btn" href="{{ a.url }}" target="_blank" rel="noopener">Open full article ↗</a></div>
+    </div>
+  </details>
+{% endmacro %}
+{% if pinned %}
+<h3 class="sub-h gcat">★ Highlighted by Trend now <span class="muted small" style="text-transform:none;letter-spacing:0">· the advisories at the top of each product page</span></h3>
+<div class="kbrows arows card pinned">
+  <div class="kbhead"><span>Article</span><span>Product</span><span>Type</span><span>KA</span><span>Date</span><span></span></div>
+  {% for a in pinned %}{{ arow(a) }}{% endfor %}
+</div>
+{% endif %}
+<h3 class="sub-h gcat">All articles</h3>
+<div class="kbrows arows card">
+  <div class="kbhead"><span>Article</span><span>Product</span><span>Type</span><span>KA</span><span>Date</span><span></span></div>
+  {% for a in rows %}{{ arow(a) }}
+  {% else %}
+  <p class="muted pad">{{ 'Nothing else matches.' if q or kind or src or pinned else 'No articles yet. Press Check now. If nothing appears, the server may not be able to reach success.trendmicro.com.' }}</p>
+  {% endfor %}
+</div>
+{% endblock %}
