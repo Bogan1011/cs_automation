@@ -1,5 +1,10 @@
 """One click: make a OneDrive folder for a client's diagnostic logs and a link the client can upload to.
 
+Two ways to reach OneDrive, the first that is set up wins:
+1. rclone (no Entra app needed): sign in once with `rclone config`, a remote named ONEDRIVE_RCLONE_REMOTE.
+   Gives an anyone-with-the-link edit link, which lets the client upload from the browser.
+2. Microsoft Graph with the console's own Entra app, described below.
+
 Signs in as the engineer (delegated Files.ReadWrite, device code once with `python -m app.cli onedrive-login`),
 using the same Entra app as Outlook (GRAPH_TENANT_ID / GRAPH_CLIENT_ID, no secret). Only touches folders under
 ONEDRIVE_LOG_ROOT in that person's own OneDrive.
@@ -8,8 +13,12 @@ Link order: an upload-only link ("Request files": the client can add files but n
 an anyone-with-the-link edit link if the tenant blocks upload-only links. If the tenant allows neither, the folder is
 still made and its OneDrive address is returned so it can be shared by hand.
 """
+import os
 import re
+import shutil
+import subprocess
 from datetime import datetime
+from pathlib import Path
 from urllib.parse import quote
 
 import httpx
@@ -134,9 +143,56 @@ def _share(http: httpx.Client, item_id: str) -> tuple[str, str]:
     return "", ""
 
 
-def create_log_folder(client: str, host: str, trend_case: str = "", transport=None) -> dict:
+# ---------- rclone ----------
+
+def _rclone_conf() -> Path:
+    return Path(os.environ.get("RCLONE_CONFIG") or Path.home() / ".config" / "rclone" / "rclone.conf")
+
+
+def rclone_ready() -> bool:
+    if not shutil.which("rclone"):
+        return False
+    try:
+        return f"[{settings.onedrive_remote}]" in _rclone_conf().read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+
+
+def _run(args: list[str]) -> subprocess.CompletedProcess:
+    return subprocess.run(["rclone", *args], capture_output=True, text=True, timeout=90)
+
+
+def _rclone_create(parts: list[str], run=_run) -> dict:
+    target = f"{settings.onedrive_remote}:{'/'.join(parts)}"
+    r = run(["mkdir", target])
+    if r.returncode:
+        raise RuntimeError("rclone could not create the folder: " + _rclone_err(r))
+    url, kind = "", ""
+    r = run(["link", target, "--onedrive-link-scope", "anonymous", "--onedrive-link-type", "edit"])
+    if r.returncode == 0 and r.stdout.strip():
+        url, kind = r.stdout.strip().splitlines()[-1], "anyone can upload"
+    own = run(["link", target, "--onedrive-link-scope", "organization", "--onedrive-link-type", "view"])
+    folder = own.stdout.strip().splitlines()[-1] if own.returncode == 0 and own.stdout.strip() else ""
+    return {"path": "/".join(parts), "folder_url": folder, "upload_url": url, "link_kind": kind}
+
+
+def _rclone_err(r) -> str:
+    text = (r.stderr or r.stdout or "").strip().splitlines()
+    msg = text[-1] if text else f"exit {r.returncode}"
+    if "token" in msg.lower() and ("expired" in msg.lower() or "invalid" in msg.lower()):
+        msg += " (sign in again with: rclone config reconnect " + settings.onedrive_remote + ":)"
+    return msg[:300]
+
+
+def ready() -> bool:
+    return rclone_ready() or connected()
+
+
+def create_log_folder(client: str, host: str, trend_case: str = "", transport=None, run=None) -> dict:
     """Make (or reuse) <root>/<client>/<date> <host> <case> and return {path, folder_url, upload_url, link_kind}."""
     parts = folder_path(client, host, trend_case)
+    if run is not None or (transport is None and rclone_ready()):
+        return _rclone_create(parts, run or _run)
     with httpx.Client(transport=transport, timeout=30) as http:
         http.headers["Authorization"] = f"Bearer {_token(http)}"
         item = _ensure_folder(http, parts)

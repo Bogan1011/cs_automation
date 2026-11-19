@@ -196,7 +196,7 @@ def uploads_page(request: Request, made: int = 0, err: str = "", product: str = 
     msg = onedrive.message(new.client, new.host, new.upload_url or new.folder_url, new.trend_case) if new else ""
     return _render(request, "console/uploads.html", {
         "rows": rows, "new": new, "msg": msg, "err": err[:300], "clients": clients, "product": product,
-        "connected": onedrive.connected(), "app_ready": onedrive.app_ready(), "root": settings.onedrive_root,
+        "connected": onedrive.ready(), "app_ready": onedrive.app_ready(), "remote": settings.onedrive_remote, "root": settings.onedrive_root,
         "tz": _local_tz()})
 
 

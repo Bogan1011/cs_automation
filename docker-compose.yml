@@ -23,6 +23,9 @@ services:
     ports:
       # Localhost only by default. Set BIND_ADDR in .env (e.g. the server LAN IP) to open it to your network.
       - "${BIND_ADDR:-127.0.0.1}:8000:8000"
+    volumes:
+      - appdata:/srv/data   # keeps the rclone OneDrive sign-in across rebuilds
 
 volumes:
   pgdata:
+  appdata:

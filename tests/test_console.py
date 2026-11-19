@@ -634,3 +634,31 @@ def test_one_click_onedrive_log_folder(monkeypatch):
         assert onedrive._stored() == "R2"                       # rotated refresh token kept
         bad = http.post("/uploads", data={"client": "", "host": "x"}, follow_redirects=False)
         assert "err=" in bad.headers["location"]
+
+
+def test_log_folder_through_rclone():
+    import subprocess
+    from app import onedrive
+    calls = []
+
+    def run(args):
+        calls.append(args)
+        out = {"anonymous": "https://od/anyone-edit\n", "organization": "https://od/mine\n"}
+        scope = args[args.index("--onedrive-link-scope") + 1] if "--onedrive-link-scope" in args else ""
+        return subprocess.CompletedProcess(args, 0, out.get(scope, ""), "")
+
+    r = onedrive.create_log_folder("ABC", "10.1.1.1", "", run=run)
+    assert calls[0][0] == "mkdir" and calls[0][1].startswith("onedrive:Client logs/ABC/") and calls[0][1].endswith(" 10.1.1.1")
+    assert r["upload_url"] == "https://od/anyone-edit" and r["folder_url"] == "https://od/mine" and r["link_kind"] == "anyone can upload"
+
+    def blocked(args):
+        if args[0] == "link" and "anonymous" in args:
+            return subprocess.CompletedProcess(args, 1, "", "sharing is disabled for this tenant")
+        return subprocess.CompletedProcess(args, 0, "https://od/mine\n" if args[0] == "link" else "", "")
+    r = onedrive.create_log_folder("ABC", "10.1.1.1", "", run=blocked)
+    assert r["upload_url"] == "" and r["folder_url"] == "https://od/mine"
+    try:
+        onedrive.create_log_folder("ABC", "h", "", run=lambda a: subprocess.CompletedProcess(a, 1, "", "couldn't find token"))
+        raise AssertionError("should fail")
+    except RuntimeError as e:
+        assert "couldn't find token" in str(e)
