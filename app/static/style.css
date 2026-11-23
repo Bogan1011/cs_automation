@@ -1339,3 +1339,8 @@ button.side-fold:hover{color:var(--fg)!important;background:color-mix(in srgb,va
 .upl-acts{display:flex;gap:6px;justify-content:flex-end}
 .button.sm,button.sm{padding:5px 10px;font-size:12px}
 @media (max-width:900px){.upl-form .ql-top{grid-template-columns:1fr}}
+.upl-form{margin-bottom:14px}
+.upl-chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:10px}
+.upl-chips button.chip{padding:5px 12px;border-radius:999px;border:1px solid var(--line);background:none!important;box-shadow:none!important;color:var(--fg)!important;font-size:13px;font-weight:600;cursor:pointer;min-width:0}
+.upl-chips button.chip:hover{background:color-mix(in srgb,var(--fg) 6%,transparent)!important}
+.upl-chips button.chip.on{background:rgba(var(--acc-rgb),.18)!important;border-color:var(--acc)}

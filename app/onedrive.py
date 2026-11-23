@@ -41,10 +41,22 @@ def _safe(part: str) -> str:
     return re.sub(r"\s+", " ", part).strip(" .-")[:80]
 
 
-def folder_path(client: str, host: str, trend_case: str = "", when: datetime | None = None) -> list[str]:
+def _key(name: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (name or "").lower())
+
+
+def match_client(client: str, existing: list[str]) -> str:
+    """Use the client's existing OneDrive folder when the name matches it loosely ("Bandhan Life" -> BandhanLife)."""
+    k = _key(client)
+    return next((f for f in existing if _key(f) == k), "") if k else ""
+
+
+def folder_path(client: str, host: str, trend_case: str = "", when: datetime | None = None,
+                existing: list[str] | None = None) -> list[str]:
     when = when or datetime.now()
     leaf = " ".join(x for x in (when.strftime("%Y-%m-%d"), _safe(host), _safe(trend_case)) if x)
-    return [p for p in (_safe(settings.onedrive_root) or "Client logs", _safe(client) or "Other", leaf) if p]
+    folder = match_client(client, existing or []) or _safe(client) or "Other"
+    return [p for p in (_safe(settings.onedrive_root) or "logs", folder, leaf) if p]
 
 
 def _stored() -> str | None:
@@ -162,6 +174,24 @@ def _run(args: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(["rclone", *args], capture_output=True, text=True, timeout=90)
 
 
+_folders_cache: dict = {"at": 0.0, "names": []}
+
+
+def client_folders(run=None, max_age: float = 300) -> list[str]:
+    """Client folders already under the logs root in OneDrive (rclone only; empty when not set up)."""
+    import time
+    if run is None:
+        if not rclone_ready():
+            return []
+        if time.time() - _folders_cache["at"] < max_age:
+            return list(_folders_cache["names"])
+    r = (run or _run)(["lsf", "--dirs-only", f"{settings.onedrive_remote}:{_safe(settings.onedrive_root) or 'logs'}"])
+    names = sorted((ln.rstrip("/") for ln in r.stdout.splitlines() if ln.strip()), key=str.lower) if r.returncode == 0 else []
+    if run is None:
+        _folders_cache.update(at=time.time(), names=names)
+    return names
+
+
 def _rclone_create(parts: list[str], run=_run) -> dict:
     target = f"{settings.onedrive_remote}:{'/'.join(parts)}"
     r = run(["mkdir", target])
@@ -190,9 +220,14 @@ def ready() -> bool:
 
 def create_log_folder(client: str, host: str, trend_case: str = "", transport=None, run=None) -> dict:
     """Make (or reuse) <root>/<client>/<date> <host> <case> and return {path, folder_url, upload_url, link_kind}."""
-    parts = folder_path(client, host, trend_case)
     if run is not None or (transport is None and rclone_ready()):
-        return _rclone_create(parts, run or _run)
+        existing = client_folders(run) if run is not None else client_folders()
+        parts = folder_path(client, host, trend_case, existing=existing)
+        out = _rclone_create(parts, run or _run)
+        if parts[1] not in existing:
+            _folders_cache["at"] = 0.0          # a new client folder: list again next time
+        return out
+    parts = folder_path(client, host, trend_case)
     with httpx.Client(transport=transport, timeout=30) as http:
         http.headers["Authorization"] = f"Bearer {_token(http)}"
         item = _ensure_folder(http, parts)

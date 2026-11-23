@@ -586,7 +586,7 @@ def test_one_click_onedrive_log_folder(monkeypatch):
     from app.db import LogFolder
     monkeypatch.setattr(settings, "graph_tenant_id", "t")
     monkeypatch.setattr(settings, "graph_client_id", "c")
-    monkeypatch.setattr(settings, "onedrive_root", "Client logs")
+    monkeypatch.setattr(settings, "onedrive_root", "logs")
     seen, made = [], {}
 
     def handler(req: httpx.Request):
@@ -643,12 +643,15 @@ def test_log_folder_through_rclone():
 
     def run(args):
         calls.append(args)
+        if args[0] == "lsf":
+            return subprocess.CompletedProcess(args, 0, "Acme Corp/\nABC/\n", "")
         out = {"anonymous": "https://od/anyone-edit\n", "organization": "https://od/mine\n"}
         scope = args[args.index("--onedrive-link-scope") + 1] if "--onedrive-link-scope" in args else ""
         return subprocess.CompletedProcess(args, 0, out.get(scope, ""), "")
 
     r = onedrive.create_log_folder("ABC", "10.1.1.1", "", run=run)
-    assert calls[0][0] == "mkdir" and calls[0][1].startswith("onedrive:Client logs/ABC/") and calls[0][1].endswith(" 10.1.1.1")
+    mk = next(c for c in calls if c[0] == "mkdir")
+    assert mk[1].startswith("onedrive:logs/ABC/") and mk[1].endswith(" 10.1.1.1")
     assert r["upload_url"] == "https://od/anyone-edit" and r["folder_url"] == "https://od/mine" and r["link_kind"] == "anyone can upload"
 
     def blocked(args):
@@ -662,3 +665,29 @@ def test_log_folder_through_rclone():
         raise AssertionError("should fail")
     except RuntimeError as e:
         assert "couldn't find token" in str(e)
+
+
+
+def test_log_folder_uses_existing_client_folder_and_json_button(monkeypatch):
+    import subprocess
+    from app import onedrive
+    assert onedrive.match_client("Bandhan Life", ["BandhanLife", "IFL"]) == "BandhanLife"
+    assert onedrive.match_client("ifl", ["BandhanLife", "IFL"]) == "IFL" and onedrive.match_client("New Co", ["IFL"]) == ""
+    calls = []
+
+    def run(args):
+        calls.append(args)
+        if args[0] == "lsf":
+            return subprocess.CompletedProcess(args, 0, "Acme Corp/\nGlobexLtd/\n", "")
+        if args[0] == "link":
+            return subprocess.CompletedProcess(args, 0, "https://od/x\n", "")
+        return subprocess.CompletedProcess(args, 0, "", "")
+    real = onedrive.create_log_folder
+    monkeypatch.setattr(onedrive, "create_log_folder", lambda *a, **k: real(*a, run=run, **k))
+    with TestClient(app) as http:
+        login(http)
+        d = http.post("/uploads.json", data={"client": "globex ltd", "host": "10.0.0.1"}).json()
+        assert d["ok"] and d["path"].startswith("logs/GlobexLtd/") and d["path"].endswith(" 10.0.0.1")
+        assert d["upload_url"] == "https://od/x" and "10.0.0.1" in d["message"]
+        bad = http.post("/uploads.json", data={"client": "", "host": ""})
+        assert bad.status_code == 400 and "client" in bad.json()["error"]

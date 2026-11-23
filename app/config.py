@@ -58,7 +58,7 @@ class Settings:
     # rclone remote that points at your OneDrive (set up once with `rclone config`). Used first when it exists,
     # so no Entra app is needed. RCLONE_CONFIG (in docker-compose) says where rclone keeps its sign-in.
     onedrive_remote: str = field(default_factory=lambda: _env("ONEDRIVE_RCLONE_REMOTE", "onedrive"))
-    onedrive_root: str = field(default_factory=lambda: _env("ONEDRIVE_LOG_ROOT", "Client logs"))
+    onedrive_root: str = field(default_factory=lambda: _env("ONEDRIVE_LOG_ROOT", "logs"))
     timezone: str = field(default_factory=lambda: _env("TIMEZONE", "Asia/Kolkata"))  # for the daily log's dates
     enable_scheduler: bool = field(default_factory=lambda: _env("ENABLE_SCHEDULER", "1") == "1")
 

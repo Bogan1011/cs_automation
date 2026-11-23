@@ -187,17 +187,34 @@ def guide_page(request: Request, product: str, name: str):
 # ---------- log upload folders (OneDrive) ----------
 
 @router.get("/uploads", response_class=HTMLResponse)
-def uploads_page(request: Request, made: int = 0, err: str = "", product: str = ""):
+def uploads_page(request: Request, made: int = 0, err: str = "", product: str = "", host: str = "", client: str = ""):
     _user(request)
     with SessionLocal() as s:
         rows = s.scalars(select(LogFolder).order_by(LogFolder.at.desc()).limit(50)).all()
         new = s.get(LogFolder, made) if made else None
-        clients = sorted(set(_clients(s)) | {r.client for r in rows if r.client})
+        folders = onedrive.client_folders()
+        known = {onedrive._key(f) for f in folders}
+        others = sorted({c for c in set(_clients(s)) | {r.client for r in rows if r.client} if onedrive._key(c) not in known})
     msg = onedrive.message(new.client, new.host, new.upload_url or new.folder_url, new.trend_case) if new else ""
     return _render(request, "console/uploads.html", {
-        "rows": rows, "new": new, "msg": msg, "err": err[:300], "clients": clients, "product": product,
-        "connected": onedrive.ready(), "app_ready": onedrive.app_ready(), "remote": settings.onedrive_remote, "root": settings.onedrive_root,
-        "tz": _local_tz()})
+        "rows": rows, "new": new, "msg": msg, "err": err[:300], "folders": folders, "clients": others, "product": product,
+        "host": host[:200], "client": client[:120], "connected": onedrive.ready(), "via_rclone": onedrive.rclone_ready(),
+        "app_ready": onedrive.app_ready(), "remote": settings.onedrive_remote, "root": settings.onedrive_root, "tz": _local_tz()})
+
+
+def _make_log_folder(me: str, client: str, host: str, trend_case: str, product: str) -> LogFolder:
+    client, host, trend_case = client.strip()[:120], host.strip()[:200], trend_case.strip()[:40]
+    if not client or not host:
+        raise ValueError("Fill in the client and the server")
+    r = onedrive.create_log_folder(client, host, trend_case)
+    with SessionLocal() as s:
+        row = LogFolder(author=me, client=client, host=host, trend_case=trend_case,
+                        product=product if product in PRODUCTS else "other", **r)
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+        s.expunge(row)
+    return row
 
 
 @router.post("/uploads")
@@ -205,20 +222,26 @@ def uploads_create(request: Request, client: str = Form(""), host: str = Form(""
                    product: str = Form("other")):
     from urllib.parse import quote
     me = _user(request)
-    client, host, trend_case = client.strip()[:120], host.strip()[:200], trend_case.strip()[:40]
-    if not client or not host:
-        return RedirectResponse("/uploads?err=" + quote("Fill in the client and the server"), status_code=303)
     try:
-        r = onedrive.create_log_folder(client, host, trend_case)
+        row = _make_log_folder(me, client, host, trend_case, product)
     except Exception as e:  # not connected, expired sign-in or a OneDrive error: show it on the page
         return RedirectResponse("/uploads?err=" + quote(str(e)[:300]), status_code=303)
-    with SessionLocal() as s:
-        row = LogFolder(author=me, client=client, host=host, trend_case=trend_case,
-                        product=product if product in PRODUCTS else "other", **r)
-        s.add(row)
-        s.commit()
-        rid = row.id
-    return RedirectResponse(f"/uploads?made={rid}", status_code=303)
+    return RedirectResponse(f"/uploads?made={row.id}", status_code=303)
+
+
+@router.post("/uploads.json")
+def uploads_create_json(request: Request, client: str = Form(""), host: str = Form(""), trend_case: str = Form(""),
+                        product: str = Form("other")):
+    """Same as the form, for the one-click button: returns the link so the page can copy it straight away."""
+    from fastapi.responses import JSONResponse
+    me = _user(request)
+    try:
+        row = _make_log_folder(me, client, host, trend_case, product)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:300]}, status_code=400)
+    return {"ok": True, "id": row.id, "path": row.path, "upload_url": row.upload_url, "folder_url": row.folder_url,
+            "link_kind": row.link_kind, "client": row.client, "host": row.host, "trend_case": row.trend_case,
+            "author": row.author, "message": onedrive.message(row.client, row.host, row.upload_url or row.folder_url, row.trend_case)}
 
 
 # ---------- work board ----------
