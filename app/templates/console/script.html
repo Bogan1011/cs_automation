@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% from "console/_m.html" import prod with context %}
+{% block title %}{{ s.name }} · Scripts{% endblock %}
+{% block content %}
+<div class="bar head">
+  <div><a href="/scripts?product={{ s.product }}" class="back">‹ Scripts</a><h1 class="wtitle">{{ s.summary }}</h1>
+    <p class="wmeta">{{ prod(s.product) }}<span>{{ s.platform }}</span><span class="mono muted">{{ s.name }} · {{ s.lines }} lines</span></p></div>
+  <div class="actions"><button class="ghost" id="copy" type="button">Copy script</button><a class="button" href="/scripts/{{ s.product }}/{{ s.name }}/raw?download=1">Download</a></div>
+</div>
+<p class="muted">{{ s.details }}</p>
+<div class="card"><span class="muted small">How to run</span><code class="run">{{ s.run }}</code></div>
+<pre class="card code" id="code">{{ code }}</pre>
+{% endblock %}
+{% block scripts %}<script>document.getElementById('copy').onclick = () => navigator.clipboard.writeText(document.getElementById('code').textContent).then(() => toast('Copied', 1800));</script>{% endblock %}

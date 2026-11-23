@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "console/_m.html" import prod, icon with context %}
+{% block title %}Tools · CS Console{% endblock %}
+{% block content %}
+<div class="bar head"><div><h1>Trend tools</h1><p class="muted small">Official Trend support tools on our OneDrive. Click a row to see when to use it, or ⬇ to open the download.</p></div></div>
+<div class="kbrows trows card">
+  <div class="kbhead"><span>Tool</span><span>Product</span><span>File</span><span></span></div>
+  {% for t in rows %}
+  <details class="kbrow">
+    <summary>
+      <span class="kt"><i class="chev"></i><b>{{ t.name }}</b></span>
+      <span>{{ prod(t.product) }}</span>
+      <span class="mono muted small fname">{{ t.file_name or '–' }}</span>
+      <a class="button small-btn dl" href="{{ t.url }}" target="_blank" rel="noopener" title="Open on OneDrive">⬇ Download</a>
+    </summary>
+    <div class="kbbody">
+      {% if t.description %}<p class="small">{{ t.description }}</p>{% endif %}
+      {% if t.file_name and ('/:f:/' in t.url or '?id=' not in t.url and '/:u:/' not in t.url and '/:x:/' not in t.url) %}<p class="muted small">The link opens our shared Tools folder. Pick <b class="mono">{{ t.file_name }}</b> there.</p>{% endif %}
+      <details class="sub"><summary class="muted small">Edit link or details</summary>
+        <form method="post" action="/tools" class="form grid2">
+          <input type="hidden" name="edit_id" value="{{ t.id }}">
+          <label>Name<input name="name" required maxlength="160" value="{{ t.name }}"></label>
+          <label>Product<select name="product">{% for k, v in PRODUCTS.items() %}<option value="{{ k }}" {{ 'selected' if k == t.product }}>{{ v }}</option>{% endfor %}</select></label>
+          <label class="span2">Link<input name="url" type="url" required value="{{ t.url }}"></label>
+          <label>File name<input name="file_name" maxlength="200" value="{{ t.file_name }}"></label>
+          <label>What it's for<input name="description" value="{{ t.description }}"></label>
+          <div class="span2 kbact"><button type="submit" class="small-btn">Save</button></div>
+        </form>
+        <form method="post" action="/tools/{{ t.id }}/delete" onsubmit="return confirm('Remove {{ t.name | e }}?')"><button class="ghost small-btn" type="submit">Remove</button></form>
+      </details>
+    </div>
+  </details>
+  {% else %}
+  <p class="muted pad">No tools yet. Add one below.</p>
+  {% endfor %}
+</div>
+<details class="card fold">
+  <summary><span>{{ icon('plus', 15) }} Add a tool</span><span class="muted small">Paste a OneDrive share link or a Trend download page</span></summary>
+  <form method="post" action="/tools" class="form grid2">
+    <label>Name<input name="name" required maxlength="160" placeholder="e.g. Case Diagnostic Tool (CDT)"></label>
+    <label>Product<select name="product">{% for k, v in PRODUCTS.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
+    <label class="span2">Link<input name="url" type="url" required placeholder="https://…sharepoint.com/…"></label>
+    <label>File name<input name="file_name" maxlength="200" placeholder="e.g. cdt-26-win-en-1270.zip"></label>
+    <label>What it's for<input name="description" placeholder="When to use it"></label>
+    <div class="span2"><button type="submit">Add tool</button></div>
+  </form>
+</details>
+{% endblock %}

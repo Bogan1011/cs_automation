@@ -1,0 +1,441 @@
+"""Admin commands. Run inside the container: docker compose exec app python -m app.cli <command>"""
+import argparse
+import getpass
+import json
+import re
+import sys
+from collections import Counter, defaultdict
+
+from sqlalchemy import select
+
+from . import crypto
+from .config import REGIONS, settings
+from .db import (Client, Endpoint, EndpointDetail, SessionLocal, Snapshot, SupportCase, SyncState,
+                 init_db)
+from .visionone import VisionOneClient
+
+
+def _read_key(_args=None) -> str:
+    key = getpass.getpass("Vision One API key (input hidden): ").strip()
+    if not key:
+        sys.exit("No key entered")
+    return key
+
+
+SENSITIVE = re.compile(r"name|ip|guid|mac|user|domain|host|fqdn|address|serial|id$|uuid|sid", re.I)
+SAFE = re.compile(r"version|pattern|engine|component|status|manager|type|platform|policy|group|state|connect|deploy|install", re.I)
+
+
+def _flatten(obj, prefix=""):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            yield from _flatten(v, f"{prefix}.{k}" if prefix else k)
+    elif isinstance(obj, list):
+        if obj and all(isinstance(x, (dict, list)) for x in obj):
+            for x in obj:
+                yield from _flatten(x, prefix + "[]")
+        else:
+            yield prefix, ", ".join(map(str, obj))
+    else:
+        yield prefix, obj
+
+
+def sep_compliance_report(c) -> str:
+    """Fetch live detail for every SEP agent seen in the last 7 days and count compliance several ways,
+    so we can see which one the Apex One / SEP console uses. Prints counts only, no names."""
+    from concurrent.futures import ThreadPoolExecutor
+    from .collector import (VIRUS_PATTERNS, classify_protection, component_state, normalize_endpoint,
+                            version_key)
+    out = []
+    with VisionOneClient(crypto.decrypt(c.api_key_enc), c.region) as v1:
+        rows = [normalize_endpoint(i) for i in v1.list_endpoints()]
+        sep = list({r["agent_guid"]: r for r in rows if r["protection"] == "SEP"}.values())
+        fresh = [r for r in sep if not r["stale"]]
+        out.append(f"SEP agents: {len(sep)}; offline 7+ days (Vision One last connected): {len(sep) - len(fresh)}; rated: {len(fresh)}")
+        verdict = Counter(component_state(r) for r in fresh)
+        out.append(f"\nRule A, Trend componentVersion verdict: {dict(verdict)}")
+
+        def get_detail(r):
+            try:
+                return v1.get_endpoint(r["agent_guid"])
+            except Exception:
+                return None
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            details = [d for d in pool.map(get_detail, fresh) if d]
+    out.append(f"(fetched live detail for {len(details)} agents)")
+    pats = defaultdict(Counter)
+    ids = {}
+    feats = defaultdict(Counter)
+    feat_out_ids = defaultdict(Counter)
+    for d in details:
+        epp = d.get("eppAgent") or {}
+        for p in epp.get("patterns") or []:
+            if p.get("name") in VIRUS_PATTERNS:
+                pats[p["name"]][str(p.get("version"))] += 1
+                ids[p["name"]] = str(p.get("id"))
+        for f in epp.get("features") or []:
+            feats[str(f.get("name"))][str(f.get("status"))] += 1
+            for i in f.get("outdatedPatternIds") or []:
+                feat_out_ids[str(f.get("name"))][str(i)] += 1
+    for name, vers in pats.items():
+        ordered = sorted(vers.items(), key=lambda kv: version_key(kv[0]), reverse=True)
+        out.append(f"\nRule B, {name} (id {ids.get(name)}) versions: " + ", ".join(f"{v}: {n}" for v, n in ordered[:10]))
+        top = ordered[0][1] if ordered else 0
+        top2 = sum(n for _, n in ordered[:2])
+        out.append(f"   newest only = {top} compliant; newest two = {top2} compliant; total {sum(vers.values())}")
+    out.append("\nRule C, feature status (enabledAndCompliant / enabledButNotCompliant ...):")
+    for name, st in sorted(feats.items()):
+        out.append(f"   {name}: {dict(st)}")
+        if feat_out_ids.get(name):
+            out.append(f"      outdated pattern ids: {dict(feat_out_ids[name].most_common(8))}")
+    return "\n".join(out)
+
+
+def inspect_fields(items: list[dict]) -> str:
+    """Field paths, how often they are filled, and value counts for low-cardinality, non-identifying fields."""
+    seen: dict[str, Counter] = defaultdict(Counter)
+    for item in items:
+        for path, val in _flatten(item):
+            if val not in (None, "", []):
+                seen[path][str(val)[:80]] += 1
+    out = [f"{len(items)} endpoint records returned by the API", ""]
+    for path in sorted(seen):
+        counts = seen[path]
+        filled = sum(counts.values())
+        leaf = path.split(".")[-1].replace("[]", "")
+        line = f"{path}  (filled {filled})"
+        hidden = (bool(SENSITIVE.search(leaf)) and not SAFE.search(leaf) and not leaf.lower().startswith("os")
+                  and "patterns[]" not in path)
+        if "datetime" in leaf.lower():
+            line += f"  [{len(counts)} distinct timestamps]"
+        elif hidden:
+            line += f"  [{len(counts)} distinct, values hidden]"
+        elif len(counts) <= 25 or SAFE.search(leaf):
+            top = ", ".join(f"{v!r}: {n}" for v, n in counts.most_common(25))
+            line += f"\n      {top}" + (f"  … +{len(counts) - 25} more" if len(counts) > 25 else "")
+        else:
+            line += f"  [{len(counts)} distinct]"
+        out.append(line)
+    return "\n".join(out)
+
+
+def remove_client(s, c) -> None:
+    """Delete one client with its encrypted API keys, endpoints, details, snapshots and support cases.
+    Rows are deleted explicitly so this also works where the database does not enforce ON DELETE CASCADE."""
+    for model in (EndpointDetail, Endpoint, Snapshot, SupportCase):
+        s.query(model).filter(model.client_id == c.id).delete(synchronize_session=False)
+    s.delete(c)
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog="python -m app.cli")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("gen-key", help="print a new MASTER_KEY")
+    a = sub.add_parser("add-client", help="add a client (prompts for its API key)")
+    a.add_argument("--name", required=True)
+    a.add_argument("--region", required=True, choices=sorted(REGIONS))
+    a.add_argument("--report-to", default="", help="comma-separated recipients for report drafts")
+    u = sub.add_parser("set-key", help="rotate a client's API key")
+    u.add_argument("--name", required=True)
+    e = sub.add_parser("edit-client")
+    e.add_argument("--name", required=True)
+    e.add_argument("--region", choices=sorted(REGIONS))
+    e.add_argument("--report-to")
+    e.add_argument("--enabled", choices=["yes", "no"])
+    sub.add_parser("list-clients")
+    rm = sub.add_parser("remove-client", help="delete a client, its API keys and all its stored data")
+    g = rm.add_mutually_exclusive_group(required=True)
+    g.add_argument("--name")
+    g.add_argument("--all", action="store_true", help="every client")
+    rm.add_argument("--yes", action="store_true", help="skip the confirmation question")
+    st = sub.add_parser("seed-tools", help="add or update the team's standard Trend tools (DSA CUT, SCUT, CDT, ...)")
+    st.add_argument("--url", required=True, help="OneDrive/SharePoint link (the shared Tools folder, or a file link)")
+    st.add_argument("--only", default="", help="update just one tool by key: dsa-cut, dsa-support-tool, scut, cdt, easyfix-cert")
+    sp = sub.add_parser("set-password", help="create a console user or change their password (asks for it, hidden)")
+    sp.add_argument("name")
+    sp.add_argument("--role", default="admin", choices=["admin", "member"])
+    sub.add_parser("list-users", help="list console users")
+    ru = sub.add_parser("remove-user", help="stop a console user from signing in")
+    ru.add_argument("name")
+    sub.add_parser("articles-check", help="show what the Trend article reader finds on each product page (no changes)")
+    asy = sub.add_parser("articles-sync", help="read the Trend product pages now and save new articles")
+    asy.add_argument("--read", default="30", help="how many article pages to read for their solution text (default 30)")
+    sub.add_parser("forget-graph", help="delete the stored Microsoft 365 sign-in and case email sync state")
+    t = sub.add_parser("test", help="check a client's key and print endpoint count")
+    t.add_argument("--name", required=True)
+    d = sub.add_parser("dump", help="print the first raw endpoint record (to check field mapping)")
+    d.add_argument("--name", required=True)
+    i = sub.add_parser("inspect", help="summarise the API fields across all endpoints (hides names/IPs)")
+    i.add_argument("--name", required=True)
+    sw = sub.add_parser("set-swp", help="connect a client's Server & Workload Protection console API (exact patterns)")
+    sw.add_argument("--name", required=True)
+    sw.add_argument("--url", required=True, help="SWP API base, e.g. https://workload.in-1.cloudone.trendmicro.com")
+    ap = sub.add_parser("set-apex", help="connect a client's Apex One / SEP automation API (exact patterns)")
+    ap.add_argument("--name", required=True)
+    ap.add_argument("--url", required=True, help="e.g. https://xxxx.manage.trendmicro.com")
+    ap.add_argument("--app-id", required=True)
+    si = sub.add_parser("swp-inspect", help="summarise SWP computer fields (hides names/IPs)")
+    si.add_argument("--name", required=True)
+    pr = sub.add_parser("apex-probe", help="try Apex One API paths and summarise their fields")
+    pr.add_argument("--name", required=True)
+    dt = sub.add_parser("detail", help="fetch single-endpoint detail for one SEP and one SWP agent (names hidden)")
+    dt.add_argument("--name", required=True)
+    ex = sub.add_parser("explain", help="show every status field for named endpoints, to match console categories")
+    ex.add_argument("--name", required=True, help="client name")
+    ex.add_argument("endpoints", nargs="+", help="endpoint names exactly as the console shows them")
+    sc = sub.add_parser("sep-compliance", help="compare ways of counting SEP virus pattern compliance (read-only)")
+    sc.add_argument("--name", required=True)
+    sub.add_parser("graph-login", help="sign in to Microsoft 365 once (device code) for drafts and case emails")
+    sub.add_parser("onedrive-login", help="sign in to your OneDrive once (device code) for one-click log upload folders")
+    sub.add_parser("onedrive-logout", help="forget the stored OneDrive sign-in")
+    sub.add_parser("sync-cases", help="read new Trend support case emails from the Outlook mailbox now")
+    po = sub.add_parser("poll", help="run one collection now (all clients, or one with --name)")
+    po.add_argument("--name", help="only this client (as shown by list-clients)")
+    po.add_argument("--all-details", action="store_true",
+                    help="fetch exact pattern versions for every endpoint now instead of a batch per poll")
+    args = p.parse_args(argv)
+
+    if args.cmd == "gen-key":
+        print(crypto.generate_key())
+        return
+    init_db()
+    with SessionLocal() as s:
+        def get(name):
+            c = s.scalars(select(Client).where(Client.name == name)).first()
+            if not c:
+                sys.exit(f"No client named {name!r}")
+            return c
+
+        if args.cmd == "add-client":
+            key = _read_key(args)
+            s.add(Client(name=args.name, region=args.region, api_key_enc=crypto.encrypt(key),
+                         report_to=args.report_to))
+            s.commit()
+            print(f"Added {args.name} ({args.region})")
+        elif args.cmd == "set-key":
+            c = get(args.name)
+            c.api_key_enc = crypto.encrypt(_read_key(args))
+            s.commit()
+            print("Key updated")
+        elif args.cmd == "edit-client":
+            c = get(args.name)
+            if args.region:
+                c.region = args.region
+            if args.report_to is not None:
+                c.report_to = args.report_to
+            if args.enabled:
+                c.enabled = args.enabled == "yes"
+            s.commit()
+            print("Updated")
+        elif args.cmd == "remove-client":
+            targets = list(s.scalars(select(Client))) if args.all else [get(args.name)]
+            if not targets:
+                print("No clients to remove")
+                return
+            names = ", ".join(c.name for c in targets)
+            if not args.yes and input(f"Delete {names} and all their keys and data? Type yes: ").strip() != "yes":
+                sys.exit("Cancelled")
+            for c in targets:
+                remove_client(s, c)
+            s.commit()
+            print(f"Removed {names}")
+        elif args.cmd == "set-password":
+            import getpass
+            from . import users
+            pw = getpass.getpass(f"New password for {args.name.lower()}: ")
+            if len(pw) < 8:
+                sys.exit("Use at least 8 characters.")
+            if getpass.getpass("Type it again: ") != pw:
+                sys.exit("The two passwords don't match.")
+            new = users.set_password(args.name, pw, args.role)
+            print(f"{'Created' if new else 'Updated'} {args.name.lower()} ({args.role}).")
+        elif args.cmd == "list-users":
+            from .db import User
+            for u in s.scalars(select(User).order_by(User.name)):
+                print(f"{u.name:<20} {u.role:<8} {'active' if u.active else 'removed'}")
+            for n in settings.users:
+                print(f"{n:<20} {'admin':<8} from .env")
+        elif args.cmd == "remove-user":
+            from .db import User
+            u = s.scalars(select(User).where(User.name == args.name.lower())).first()
+            if not u:
+                sys.exit(f"No user {args.name!r} in the database (users in .env are removed by editing .env).")
+            u.active = False
+            s.commit()
+            print(f"{u.name} can no longer sign in.")
+        elif args.cmd == "seed-tools":
+            from .db import ToolLink
+            from .toolkit import TOOLS
+            if not args.url.lower().startswith("https://"):
+                sys.exit("The link must start with https://")
+            for t in TOOLS:
+                if args.only and t["key"] != args.only:
+                    continue
+                row = s.scalars(select(ToolLink).where(ToolLink.key == t["key"])).first()
+                if row is None:
+                    row = ToolLink(key=t["key"], added_by="setup")
+                    s.add(row)
+                row.name, row.product, row.description = t["name"], t["product"], t["description"]
+                row.file_name, row.url = t["file_name"], args.url.strip()
+                print(f"{t['key']:<18} {t['name']}")
+            s.commit()
+        elif args.cmd == "articles-check":
+            from . import articles
+            print(articles.check())
+        elif args.cmd == "articles-sync":
+            from . import articles
+            print(f"{articles.sync(max_new=int(args.read or 30), progress=print)} new articles")
+        elif args.cmd == "forget-graph":
+            n = s.query(SyncState).delete()
+            s.commit()
+            print(f"Removed {n} stored sync/sign-in entries")
+        elif args.cmd == "list-clients":
+            for c in s.scalars(select(Client).order_by(Client.name)):
+                state = "ok" if c.last_poll_ok else ("error: " + (c.last_error or "")[:80] if c.last_poll_ok is False else "never polled")
+                print(f"{c.name:30} {c.region:4} {'enabled' if c.enabled else 'disabled':9} {state}")
+        elif args.cmd == "set-swp":
+            c = get(args.name)
+            c.swp_url = args.url
+            c.swp_key_enc = crypto.encrypt(getpass.getpass("SWP API key (input hidden): ").strip())
+            s.commit()
+            print("SWP API saved")
+        elif args.cmd == "set-apex":
+            c = get(args.name)
+            c.apex_url, c.apex_app_id = args.url, args.app_id
+            c.apex_key_enc = crypto.encrypt(getpass.getpass("Apex One API key (input hidden): ").strip())
+            s.commit()
+            print("Apex One API saved")
+        elif args.cmd == "swp-inspect":
+            from .swp import SWPClient
+            c = get(args.name)
+            with SWPClient(c.swp_url, crypto.decrypt(c.swp_key_enc)) as swp:
+                comps = swp.list_computers()
+            print(inspect_fields(comps))
+        elif args.cmd == "apex-probe":
+            from .apexone import PROBE_PATHS, ApexClient
+            c = get(args.name)
+            with ApexClient(c.apex_url, c.apex_app_id, crypto.decrypt(c.apex_key_enc)) as apex:
+                for path in PROBE_PATHS:
+                    print(f"=== GET {path}")
+                    try:
+                        data = apex.request("GET", path)
+                        content = data.get("result_content", data) if isinstance(data, dict) else data
+                        items = content if isinstance(content, list) else [content]
+                        print(inspect_fields(items))
+                    except Exception as exc:
+                        print(f"  failed: {exc}")
+        elif args.cmd == "detail":
+            from .collector import classify_protection
+            c = get(args.name)
+            with VisionOneClient(crypto.decrypt(c.api_key_enc), c.region) as v1:
+                items = v1.list_endpoints()
+                picked = {}
+                for it in items:
+                    p = classify_protection(it)
+                    if p in ("SEP", "SWP") and p not in picked:
+                        picked[p] = it
+                for p, it in picked.items():
+                    print(f"===== {p}: list record patterns")
+                    print(json.dumps((it.get("eppAgent") or {}).get("patterns"), indent=1)[:3000])
+                    print(f"===== {p}: detail record")
+                    try:
+                        d = v1.get_endpoint(it["agentGuid"])
+                        print(inspect_fields([d]))
+                        print(f"----- {p}: detail eppAgent.patterns")
+                        print(json.dumps((d.get("eppAgent") or {}).get("patterns"), indent=1)[:6000])
+                    except Exception as exc:
+                        print(f"  failed: {exc}")
+        elif args.cmd == "sep-compliance":
+            print(sep_compliance_report(get(args.name)))
+        elif args.cmd == "explain":
+            from .collector import classify_protection, inventory_flags, normalize_endpoint
+            c = get(args.name)
+            want = {e.strip().strip(",").lower() for e in args.endpoints if e.strip(", ")}
+            short = lambda n: n.split(".")[0]  # console may show FQDN, API the short name (or the reverse)
+            def nm(it):
+                return str(it.get("endpointName") or it.get("displayName") or "").lower()
+            def hit(it):
+                n = nm(it)
+                return n in want or short(n) in {short(w) for w in want}
+            with VisionOneClient(crypto.decrypt(c.api_key_enc), c.region) as v1:
+                items = v1.list_endpoints()
+                found = [it for it in items if hit(it)]
+                print(f"{len(items)} records from the API; matched {len(found)} of {len(want)} names")
+                flagged = {}
+                for it in items:
+                    if classify_protection(it) == "Unmanaged":
+                        continue
+                    for f in inventory_flags(normalize_endpoint(it)):
+                        flagged.setdefault(f, []).append(str(it.get("endpointName") or ""))
+                for f in ("deploy_failed", "sensor_update"):
+                    print(f"Dashboard currently counts as {f}: {', '.join(flagged.get(f, [])) or 'none'}")
+                    for n in flagged.get(f, []):
+                        if n.lower() not in want:
+                            found.append(next(it for it in items if str(it.get("endpointName") or "") == n))
+                found_names = {nm(it) for it in found}
+                missing = {w for w in want if w not in found_names and short(w) not in {short(n) for n in found_names}}
+                if missing:
+                    print("Not returned by the API at all: " + ", ".join(sorted(missing)))
+                for it in found:
+                    n = normalize_endpoint(it)
+                    print(f"\n===== {it.get('endpointName')}  ->  dashboard: {classify_protection(it)}, flags {inventory_flags(n)}")
+                    try:
+                        detail = v1.get_endpoint(it["agentGuid"])
+                    except Exception as exc:
+                        detail = {}
+                        print(f"  detail failed: {exc}")
+                    for label, rec in (("list", it), ("detail", detail)):
+                        for path, val in _flatten(rec):
+                            leaf = path.split(".")[-1].replace("[]", "")
+                            if "patterns[]" in path or "engines[]" in path or val in (None, "", []):
+                                continue
+                            if SENSITIVE.search(leaf) and not SAFE.search(leaf) and not leaf.lower().startswith("os"):
+                                continue
+                            print(f"  {label:6} {path} = {str(val)[:120]}")
+        elif args.cmd == "inspect":
+            c = get(args.name)
+            with VisionOneClient(crypto.decrypt(c.api_key_enc), c.region) as v1:
+                items = v1.list_endpoints()
+            print(inspect_fields(items))
+        elif args.cmd in ("test", "dump"):
+            c = get(args.name)
+            with VisionOneClient(crypto.decrypt(c.api_key_enc), c.region) as v1:
+                items = v1.list_endpoints()
+            if args.cmd == "test":
+                print(f"OK: {len(items)} endpoints")
+            else:
+                print(json.dumps(items[0] if items else {}, indent=2))
+        elif args.cmd == "onedrive-login":
+            from .onedrive import device_login as od_login
+            print("Signed in as", od_login())
+            print("Log upload folders will be made in this account's OneDrive.")
+        elif args.cmd == "onedrive-logout":
+            from . import db as _db
+            from .onedrive import TOKEN_KEY
+            with _db.SessionLocal() as s:
+                row = s.get(_db.SyncState, TOKEN_KEY)
+                if row:
+                    s.delete(row)
+                    s.commit()
+            print("OneDrive sign-in removed.")
+        elif args.cmd == "graph-login":
+            from .outlook import device_login
+            print("Signed in as", device_login())
+            print("Outlook drafts and support case emails will now work.")
+        elif args.cmd == "sync-cases":
+            from .cases import sync_cases
+            print(sync_cases())
+        elif args.cmd == "poll":
+            from .collector import collect_all
+            if args.all_details:
+                settings.detail_batch = 1_000_000
+            failed = False
+            for name, result in collect_all(args.name):
+                print(f"{name}: {result}")
+                failed |= result.startswith("FAILED")
+            if failed:
+                raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()

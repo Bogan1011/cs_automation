@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bar head">
+  <div><h1>Home</h1><p class="muted small">Every client at a glance. Click any row to drill in. Data syncs every 5 min.</p></div>
+  <div class="actions"><button id="syncall" title="Pull fresh data for every client now">↻ Sync all now</button></div>
+</div>
+
+{% macro spark(vals, w=84, h=26) %}{% if vals | length > 1 %}
+  {% set lo = [vals | min, 0] | max - 2 %}{% set hi = [vals | max, lo + 4] | max %}
+  <svg class="spark" viewBox="0 0 {{ w }} {{ h }}" width="{{ w }}" height="{{ h }}" aria-hidden="true">
+    <polyline fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" points="{% for v in vals %}{{ '%.1f' % (2 + loop.index0 * (w - 4) / (vals | length - 1)) }},{{ '%.1f' % (h - 3 - (v - lo) * (h - 6) / (hi - lo)) }} {% endfor %}"/>
+  </svg>{% else %}<span class="spark none muted">–</span>{% endif %}{% endmacro %}
+{% macro pct(n, t) %}{{ (100 * n / t) | round(2) if t else 0 }}%{% endmacro %}
+{% set F = fleet %}
+{% set PAL = ['#5b8def', '#a78bfa', '#2dd4bf', '#f472b6', '#38bdf8', '#fbbf77', '#94a3b8'] %}{% set CC = {} %}{% for c in cards %}{% set _ = CC.update({c.id: PAL[loop.index0 % (PAL | length)]}) %}{% endfor %}
+<section class="kpis4">
+  <div class="card k4 a-blue"><span class="k4l"><span class="ib blue"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span>Managed endpoints</span>
+    <ul class="k4rows">{% for c in cards %}{% set dep = {} %}{% for k, _, n in c.inv.deployment %}{% set _ = dep.update({k: n}) %}{% endfor %}
+      <li><a href="/clients/{{ c.id }}"><span class="fn cname" style="--cc:{{ CC[c.id] }}"><i class="cc"></i>{{ c.name.split(' - ')[0] }}</span><b>{{ dep.get('all', 0) }}</b></a>
+        <span class="k4s"><em>SEP</em> {{ dep.get('SEP', 0) }} · <em>SWP</em> {{ dep.get('SWP', 0) }} · <em>Sensor</em> {{ dep.get('Sensor only', 0) }}</span></li>
+    {% endfor %}</ul></div>
+  <div class="card k4 a-pink"><span class="k4l"><span class="ib pink"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg></span>SEP pattern compliance</span>
+    <ul class="k4rows">{% for c in cards %}{% set sw = (c.summary or {}).get('sep_widget') or {} %}{% set sp = sw.get('pct') %}
+      <li><a href="/endpoints?client={{ c.id }}&filter=sep_outdated"><span class="fn cname" style="--cc:{{ CC[c.id] }}"><i class="cc"></i>{{ c.name.split(' - ')[0] }}</span><b class="{{ 'good' if sp and sp >= 80 else ('mid' if sp and sp >= 60 else 'low') if sp is not none else '' }}">{{ '%.0f' % sp ~ '%' if sp is not none else '–' }}</b></a>
+        <span class="k4s"><i class="d ok"></i>{{ sw.get('compliant', 0) }} ok · <i class="d bad"></i>{{ sw.get('outdated', 0) }} outdated · {{ sw.get('offline7', 0) }} off 7d+</span></li>
+    {% endfor %}</ul></div>
+  <div class="card k4 a-violet"><span class="k4l"><span class="ib violet"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg></span>Server &amp; Workload problems</span>
+    <ul class="k4rows">{% for c in cards %}{% set k = (c.summary or {}).get('c1ws') %}
+      <li>{% if k %}<a href="/clients/{{ c.id }}/c1ws?status=critical"><span class="fn cname" style="--cc:{{ CC[c.id] }}"><i class="cc"></i>{{ c.name.split(' - ')[0] }}</span><b>{{ k.critical + k.warning }}</b></a>
+        <span class="k4s"><i class="d bad"></i>{{ k.critical }} critical · <i class="d orange"></i>{{ k.warning }} warning</span>
+      {% else %}<span class="na"><span class="fn cname" style="--cc:{{ CC[c.id] }}"><i class="cc"></i>{{ c.name.split(' - ')[0] }}</span><span class="muted small">not connected</span></span>{% endif %}</li>
+    {% endfor %}</ul></div>
+  <div class="card k4 a-amber"><span class="k4l"><span class="ib amber"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/></svg></span>Needs attention</span>
+    <ul class="k4rows">{% for c in cards %}{% set f = {} %}{% for k, _, n in c.inv.immediate + c.inv.recommended %}{% set _ = f.update({k: n}) %}{% endfor %}
+      {% set t = f.get('deploy_failed', 0) + f.get('sensor_disabled', 0) + f.get('sensor_update', 0) %}
+      <li><a href="/clients/{{ c.id }}"><span class="fn cname" style="--cc:{{ CC[c.id] }}"><i class="cc"></i>{{ c.name.split(' - ')[0] }}</span><b class="{{ 'low' if t else 'good' }}">{{ t }}</b></a>
+        <span class="k4s">{{ f.get('deploy_failed', 0) }} deploy failed · {{ f.get('sensor_disabled', 0) }} sensor off · {{ f.get('sensor_update', 0) }} update</span></li>
+    {% endfor %}</ul></div>
+</section>
+
+<section class="fgrid">
+  <article class="card fw a-pink">
+    <header><span class="ib pink"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg></span><div><h3>SEP compliance</h3><span class="muted small">Antivirus patterns · 7-day trend</span></div></header>
+    <ul class="frows">
+    {% for c in cards %}{% set sw = (c.summary or {}).get('sep_widget') or {} %}{% set sc, so, sp = sw.get('compliant') or 0, sw.get('outdated') or 0, sw.get('pct') %}{% set r = sc + so %}
+      <li><a href="/endpoints?client={{ c.id }}&filter=sep_outdated" title="Open {{ c.name }}'s outdated agents">
+        <span class="fn cname" style="--cc:{{ CC[c.id] }}"><i class="cc"></i>{{ c.name.split(' - ')[0] }}</span>
+        <span class="fbar"><i class="ok" style="width:{{ pct(sc, r) }}"></i><i class="bad" style="width:{{ pct(so, r) }}"></i></span>
+        <b class="fv">{{ '%.0f' % sp ~ '%' if sp is not none else '–' }}</b>
+        {{ spark(c.sep_trend) }}</a></li>
+    {% endfor %}
+    </ul>
+    <footer class="muted small"><i class="d ok"></i>compliant <i class="d bad"></i>outdated · offline 7d+ agents are not counted in %</footer>
+  </article>
+
+  <article class="card fw a-violet">
+    <header><span class="ib violet"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg></span><div><h3>Server &amp; Workload</h3><span class="muted small">Computer status from the SWP console</span></div></header>
+    <ul class="frows">
+    {% for c in cards %}{% set k = (c.summary or {}).get('c1ws') %}
+      <li>{% if k %}{% set t = k.critical + k.warning + k.managed + k.unmanaged %}
+        <a href="/clients/{{ c.id }}/c1ws?status=critical"><span class="fn cname" style="--cc:{{ CC[c.id] }}"><i class="cc"></i>{{ c.name.split(' - ')[0] }}</span>
+        <span class="fbar"><i class="bad" style="width:{{ pct(k.critical, t) }}"></i><i class="orange" style="width:{{ pct(k.warning, t) }}"></i><i class="ok" style="width:{{ pct(k.managed, t) }}"></i><i class="gray" style="width:{{ pct(k.unmanaged, t) }}"></i></span>
+        <span class="fnums"><b class="cbad">{{ k.critical }}</b><b class="corange">{{ k.warning }}</b></span></a>
+      {% else %}<span class="na"><span class="fn cname" style="--cc:{{ CC[c.id] }}"><i class="cc"></i>{{ c.name.split(' - ')[0] }}</span><span class="muted small">SWP console not connected</span></span>{% endif %}</li>
+    {% endfor %}
+    </ul>
+    <footer class="muted small"><i class="d bad"></i>critical <i class="d orange"></i>warning <i class="d ok"></i>managed <i class="d gray"></i>unmanaged</footer>
+  </article>
+
+  <article class="card fw a-green">
+    <header><span class="ib green"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M2 9a15 15 0 0 1 20 0"/><path d="M12 19.5h.01"/></svg></span><div><h3>Online now</h3><span class="muted small">From the Apex One and Server &amp; Workload consoles</span></div></header>
+    <ul class="frows conn">
+    {% for c in cards %}{% for prod, label in [('SEP', 'SEP'), ('SWP', 'SWP')] %}{% set v = c.conn[prod] %}
+      <li>{% if v.get('total') is not none %}<a href="/clients/{{ c.id }}"><span class="fn cname" style="--cc:{{ CC[c.id] }}"><i class="cc"></i>{{ c.name.split(' - ')[0] }} <em class="ptag {{ prod | lower }}">{{ label }}</em></span>
+        <span class="fbar"><i class="ok" style="width:{{ pct(v.online, v.total) }}"></i><i class="bad" style="width:{{ pct(v.offline, v.total) }}"></i></span>
+        <span class="fnums"><b>{{ v.online }}</b><span class="muted">/ {{ v.total }}</span></span></a>
+      {% else %}<span class="na"><span class="fn cname" style="--cc:{{ CC[c.id] }}"><i class="cc"></i>{{ c.name.split(' - ')[0] }} <em class="ptag {{ prod | lower }}">{{ label }}</em></span><span class="muted small">{{ 'Apex One' if prod == 'SEP' else 'SWP' }} console not connected</span></span>{% endif %}</li>
+    {% endfor %}{% endfor %}
+    </ul>
+  </article>
+
+  <article class="card fw a-red wide">
+    <header><span class="ib red"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5h.01"/></svg></span><div><h3>Top Server &amp; Workload issues</h3><span class="muted small">On critical and warning computers, count per client</span></div></header>
+    {% if F.top_issues %}<ul class="frows issues">
+    {% for issue, n, per in F.top_issues %}
+      <li><span class="fn">{{ issue }}</span>
+        <span class="chips">{% for cid, cname, cn in per %}<a class="cchip" style="--cc:{{ CC[cid] }}" href="/clients/{{ cid }}/c1ws?status=all&issue={{ issue | urlencode }}">{{ cname.split(' - ')[0] }} <b>{{ cn }}</b></a>{% endfor %}</span>
+</li>
+    {% endfor %}</ul>
+    {% else %}<p class="muted">No issues reported, or the SWP console isn't connected yet.</p>{% endif %}
+  </article>
+
+  <article class="card fw a-amber">
+    <header><span class="ib amber"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/></svg></span><div><h3>Needs attention</h3><span class="muted small">From Endpoint Inventory</span></div></header>
+    <table class="amx"><thead><tr><th></th><th title="Deployment failed">Deploy failed</th><th title="Sensor disabled">Sensor off</th><th title="Sensor update recommended">Update</th></tr></thead><tbody>
+    {% for c in cards %}{% set f = {} %}{% for k, _, n in c.inv.immediate + c.inv.recommended %}{% set _ = f.update({k: n}) %}{% endfor %}
+      <tr><td class="fn"><span class="cname" style="--cc:{{ CC[c.id] }}"><i class="cc"></i>{{ c.name }}</span></td>
+      {% for k in ['deploy_failed', 'sensor_disabled', 'sensor_update'] %}<td>{% if f.get(k) %}<a class="chip {{ 'red' if k == 'deploy_failed' else 'blue' }}" href="/endpoints?client={{ c.id }}&filter={{ k }}">{{ f[k] }}</a>{% else %}<span class="chip zero">0</span>{% endif %}</td>{% endfor %}</tr>
+    {% endfor %}</tbody></table>
+  </article>
+</section>
+
+<h2 class="sect">Clients</h2>
+<section class="homegrid">
+{% for c in cards %}
+  {% set s = c.summary or {} %}
+  {% set dep = {} %}{% for k, _, n in c.inv.deployment %}{% set _ = dep.update({k: n}) %}{% endfor %}
+  {% set act = (c.inv.immediate + c.inv.recommended) | rejectattr(0, 'equalto', 'unmanaged') | list %}
+  <a class="card hcard" style="--cc:{{ CC[c.id] }}" href="/clients/{{ c.id }}">
+    <div class="hc-top">
+      {% set lg = client_logo(c.name) %}{% if lg %}<span class="clogo"><img src="{{ lg }}" alt=""></span>{% endif %}
+      <h3>{{ c.name }}</h3>
+      <span class="tag">{{ c.region }}</span>
+      {% if c.last_poll_ok == False %}<span class="pill fail"><i></i>Poll failed</span>{% elif c.last_poll_at %}<span class="pill live"><i></i>Live</span>{% endif %}
+    </div>
+    <div class="hc-big"><b>{{ dep.get('all', 0) }}</b><span>managed endpoints</span></div>
+    <div class="hc-split">
+      <span><em>SEP</em> {{ dep.get('SEP', 0) }}</span><span><em>SWP</em> {{ dep.get('SWP', 0) }}</span><span><em>Sensor</em> {{ dep.get('Sensor only', 0) }}</span>
+    </div>
+    {% set t = dep.get('all', 0) %}
+    <div class="hc-bar" title="Online / offline / not seen 7+ days">
+      <i class="on" style="width:{{ (100 * (s.online or 0) / t) | round(1) if t else 0 }}%"></i>
+      <i class="off" style="width:{{ (100 * ((s.offline or 0) - (s.stale or 0)) / t) | round(1) if t else 0 }}%"></i>
+      <i class="stale" style="width:{{ (100 * (s.stale or 0) / t) | round(1) if t else 0 }}%"></i>
+    </div>
+    <div class="hc-legend muted"><span><span class="dot on"></span>{{ s.online or 0 }} online</span><span><span class="dot off"></span>{{ s.offline or 0 }} offline</span><span><span class="dot stale"></span>{{ s.stale or 0 }} 7d+</span></div>
+    <ul class="hc-act">
+      {% for k, label, n in act %}<li><span>{{ label }}</span><b class="chip {{ ('red' if k == 'deploy_failed' else 'blue') if n else 'zero' }}">{{ n }}</b></li>{% endfor %}
+    </ul>
+    <div class="hc-foot muted"><span>Updated <span class="ts">{{ c.last_poll_at or 'never' }}</span></span><span class="go">Open ›</span></div>
+  </a>
+{% else %}
+  <p class="muted">No clients yet. Add one with <code>python -m app.cli add-client</code>.</p>
+{% endfor %}
+</section>
+
+{% endblock %}
+{% block scripts %}<script>startHome();</script>{% endblock %}

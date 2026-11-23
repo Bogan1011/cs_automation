@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "console/_m.html" import prod, icon with context %}
+{% block title %}Scripts · CS Console{% endblock %}
+{% block content %}
+<div class="bar head"><div><h1>Scripts</h1><p class="muted small">Read-only health checks. They change nothing and save a report you can attach to a Trend case.</p></div>
+  <div class="actions"><a class="button ghost" href="/troubleshooting">Troubleshooting guides</a></div></div>
+<nav class="stabs">
+  <a href="/scripts" class="{{ 'on' if not product }}">All <b>{{ counts.values() | sum }}</b></a>
+  {% for k, v in SCRIPT_PRODUCTS.items() %}<a href="?product={{ k }}" class="{{ 'on' if product == k }}"><i class="pdot p-{{ k }}"></i>{{ v }} <b>{{ counts[k] }}</b></a>{% endfor %}
+</nav>
+{% for k, v in SCRIPT_PRODUCTS.items() %}{% set mine = groups | selectattr('product', 'equalto', k) | list %}{% if mine %}
+<h3 class="sub-h gcat"><i class="pdot p-{{ k }}"></i> {{ v }}</h3>
+<div class="slist card">
+  {% for g in mine %}
+  <details class="srow">
+    <summary>
+      <span class="st"><i class="chev"></i><span><b>{{ g.title }}</b><span class="muted small">{{ g.purpose }}</span></span></span>
+      <span class="sv">{% for v in g.variants %}<span class="osgrp"><span class="oslabel">{{ icon('win' if v.platform == 'Windows' else 'linux', 13) }}{{ v.platform }}</span><a class="ib-btn" href="/scripts/{{ v.product }}/{{ v.name }}" title="View {{ v.name }}">View</a><a class="ib-btn dl" href="/scripts/{{ v.product }}/{{ v.name }}/raw?download=1" title="Download {{ v.name }}">⬇</a></span>{% endfor %}</span>
+    </summary>
+    <div class="kbbody">
+      {% for v in g.variants %}<div class="runline"><span class="muted small">{{ v.platform }} · <span class="mono">{{ v.name }}</span></span><code class="run">{{ v.run }}</code></div>{% endfor %}
+    </div>
+  </details>
+  {% endfor %}
+</div>
+{% endif %}{% endfor %}
+{% endblock %}

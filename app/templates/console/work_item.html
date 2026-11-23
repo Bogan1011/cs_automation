@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "console/_m.html" import prod, stat, pri, when, icon with context %}
+{% block title %}{{ w.title }} · Work board{% endblock %}
+{% block content %}
+<div class="bar head">
+  <div><a href="/work" class="back">‹ Work board</a>
+    <h1 class="wtitle">{{ w.title }}</h1>
+    <p class="wmeta">{{ pri(w.priority) }}{{ stat(w.status) }}{{ prod(w.product) }}<span><b>{{ w.client or 'No client' }}</b></span><span class="muted">Owner <b>{{ w.owner or '–' }}</b></span>{% if w.trend_case %}<span class="mono">{{ w.trend_case }}</span>{% endif %}<span class="muted small">opened by {{ w.created_by }} {{ when(w.created_at) }}</span></p>
+  </div>
+  <div class="actions"><a class="button ghost" href="/library/new?from_work={{ w.id }}">Save to case library</a></div>
+</div>
+{% if request.query_params.get('resolved') %}<p class="okmsg">Marked resolved. <a href="/library/new?from_work={{ w.id }}">Save the issue and solution to the case library</a> so the team has it next time.</p>{% endif %}
+
+<section class="wcols">
+  <form method="post" class="card form update">
+    <h3>Add an update</h3>
+    <textarea name="note" rows="4" placeholder="What changed? What did you try, what did the client or Trend say, what's next?"></textarea>
+    <div class="grid4">
+      <label>Status<select name="status">{% for st in STATUSES %}<option {{ 'selected' if st == w.status }}>{{ st }}</option>{% endfor %}</select></label>
+      <label>Owner<input name="owner" list="users" value="{{ w.owner }}"></label>
+      <label>Priority<select name="priority">{% for p in PRIORITIES %}<option {{ 'selected' if p == w.priority }}>{{ p }}</option>{% endfor %}</select></label>
+      <label>Trend case<input name="trend_case" value="{{ w.trend_case }}" placeholder="TM-…"></label>
+    </div>
+    <details class="sub"><summary class="muted small">Edit issue or client</summary>
+      <div class="grid2"><label>Issue<input name="title" value="{{ w.title }}" maxlength="300"></label><label>Client<input name="client" list="clients" value="{{ w.client }}"></label></div></details>
+    <div><button type="submit">Save update</button></div>
+  </form>
+
+  <div class="card timeline">
+    <h3>History</h3>
+    <ol>
+    {% for u in w.updates %}
+      <li><span class="av">{{ (u.author or '?')[:1] | upper }}</span><div><span class="muted small"><b>{{ u.author }}</b> · {{ when(u.at) }}</span>
+        {% if u.change %}<span class="chg">{{ u.change }}</span>{% endif %}{% if u.note %}<p>{{ u.note }}</p>{% endif %}</div></li>
+    {% endfor %}
+    </ol>
+  </div>
+</section>
+<form method="post" action="/work/{{ w.id }}/delete" class="danger" onsubmit="return confirm('Delete this work item and its history?')"><button class="ghost small-btn" type="submit">Delete item</button></form>
+<datalist id="clients">{% for c in clients %}<option value="{{ c }}">{% endfor %}</datalist>
+<datalist id="users">{% for u in users %}<option value="{{ u }}">{% endfor %}</datalist>
+{% endblock %}
